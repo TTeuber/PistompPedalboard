@@ -1,0 +1,28 @@
+# Dev/build service for the pi-Stomp C++ work.
+#
+# platform: linux/arm64 -> runs natively on Apple Silicon (matches the Pi 5).
+# The repo is bind-mounted at /work, so build/ lands back on the Mac. Keeping
+# build/ on the host means CMake's cache and JUCE's FetchContent download persist
+# across runs (no re-downloading JUCE every time).
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: pistomp-dev
+    platform: linux/arm64
+    working_dir: /work
+    environment:
+      # ccache lives on a named volume (below) so cached objects survive
+      # container restarts -> clean rebuilds reuse them instead of recompiling
+      # all of JUCE. Named volume (not the bind mount) keeps it fast.
+      - CCACHE_DIR=/ccache
+    volumes:
+      - .:/work
+      - ccache:/ccache
+    # The container stays up (sleep infinity) so the scripts `exec` into it --
+    # fast builds and fast ad-hoc inspection, no per-command container startup.
+    command: sleep infinity
+
+volumes:
+  ccache:
