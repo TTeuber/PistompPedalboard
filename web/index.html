@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>pi-Stomp Pedalboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>pi-Stomp <em>Worship Pedalboard</em></h1>
+    </div>
+    <div class="globals">
+      <button id="bypass" class="bypass">Bypass</button>
+      <label class="master">
+        Master <output id="masterVal">100%</output>
+        <input id="master" type="range" min="0" max="200" step="1" value="100" />
+      </label>
+    </div>
+  </header>
+
+  <section class="presets">
+    <label>Preset
+      <select id="presetSelect"><option value="">—</option></select>
+    </label>
+    <button id="presetLoad">Load</button>
+    <input id="presetName" type="text" placeholder="save as…" />
+    <button id="presetSave">Save</button>
+    <span id="telemetry" class="telemetry"></span>
+  </section>
+
+  <main id="board" class="board"><!-- pedal cards injected from /api/state --></main>
+
+  <script src="app.js"></script>
+</body>
+</html>

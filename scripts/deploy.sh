@@ -32,6 +32,14 @@ echo ">> deploying $BIN -> $PI_USER@$PI_HOST:$PI_DIR/"
 ssh "$PI_USER@$PI_HOST" "mkdir -p $PI_DIR"
 rsync -avz "$BIN" "$PI_USER@$PI_HOST:$PI_DIR/"
 
+# The pedalboard serves its web UI + JSON presets from dirs next to the binary
+# (it resolves them via /proc/self/exe). Ship them alongside the executable.
+if [[ "$TARGET" == "pedalboard" ]]; then
+  echo ">> deploying web/ + presets/ assets"
+  rsync -avz pedalboard/web "$PI_USER@$PI_HOST:$PI_DIR/"
+  rsync -avz pedalboard/presets "$PI_USER@$PI_HOST:$PI_DIR/"
+fi
+
 if [[ "${1:-}" == "--run" ]]; then
   shift
   echo ">> running $PI_DIR/$TARGET on the Pi"

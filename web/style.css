@@ -1,0 +1,91 @@
+:root {
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel2: #1c232d;
+  --line: #2a313c;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #00c8ff;
+  --green: #30d158;
+  --red: #ff453a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font: 15px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+header {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+  gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #11171f, #0d1117);
+  position: sticky; top: 0; z-index: 5;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+.brand em { color: var(--accent); font-style: normal; font-weight: 500; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+.globals { display: flex; align-items: center; gap: 16px; }
+.master { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.master output { color: var(--text); min-width: 42px; text-align: right; }
+.master input { width: 130px; }
+.bypass {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600;
+}
+.bypass.active { background: var(--red); border-color: var(--red); color: #fff; }
+
+.presets {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 20px; border-bottom: 1px solid var(--line); color: var(--muted);
+}
+.presets label { display: flex; align-items: center; gap: 6px; }
+.presets select, .presets input, .presets button {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 7px; padding: 7px 10px; font: inherit;
+}
+.presets button { cursor: pointer; }
+.presets button:hover { border-color: var(--accent); }
+.telemetry { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; }
+
+.board {
+  display: grid; gap: 16px; padding: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+.pedal {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  padding: 16px; transition: opacity .15s, border-color .15s;
+}
+.pedal.off { opacity: .5; }
+.pedal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.pedal-head h2 { font-size: 15px; margin: 0; letter-spacing: .3px; text-transform: uppercase; color: var(--accent); }
+.power {
+  width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line);
+  background: #0b0f14; cursor: pointer; position: relative;
+}
+.power.on { border-color: var(--green); box-shadow: 0 0 8px rgba(48,209,88,.6); background: var(--green); }
+
+.param { margin: 12px 0; }
+.param label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.param output { color: var(--text); font-variant-numeric: tabular-nums; }
+.param input[type=range] { width: 100%; }
+.param select {
+  width: 100%; background: var(--panel2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px; padding: 7px;
+}
+.toggle {
+  width: 100%; padding: 8px; border-radius: 7px; cursor: pointer;
+  background: var(--panel2); color: var(--muted); border: 1px solid var(--line); font-weight: 600;
+}
+.toggle.on { background: var(--accent); color: #04121a; border-color: var(--accent); }
+
+input[type=range] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: var(--line); }
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; box-shadow: 0 0 6px rgba(0,200,255,.5);
+}
+input[type=range]::-moz-range-thumb {
+  width: 18px; height: 18px; border: none; border-radius: 50%; background: var(--accent); cursor: pointer;
+}

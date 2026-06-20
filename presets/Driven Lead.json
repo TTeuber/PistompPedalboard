@@ -1,0 +1,10 @@
+{
+  "name": "Driven Lead",
+  "master": 1.0,
+  "bypassed": false,
+  "effects": {
+    "drive": { "enabled": true,  "params": { "type": 0, "drive": 55, "tone": 60, "level": 70 } },
+    "amp":   { "enabled": true,  "params": { "drive": 150, "level": 95 } },
+    "reverb":{ "enabled": true,  "params": { "size": 55, "damping": 50, "width": 100, "mix": 28, "freeze": 0 } }
+  }
+}

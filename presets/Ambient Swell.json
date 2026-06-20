@@ -1,0 +1,10 @@
+{
+  "name": "Ambient Swell",
+  "master": 1.0,
+  "bypassed": false,
+  "effects": {
+    "drive": { "enabled": false, "params": { "type": 0, "drive": 20, "tone": 70, "level": 75 } },
+    "amp":   { "enabled": true,  "params": { "drive": 95, "level": 100 } },
+    "reverb":{ "enabled": true,  "params": { "size": 92, "damping": 30, "width": 100, "mix": 55, "freeze": 0 } }
+  }
+}

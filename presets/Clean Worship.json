@@ -1,0 +1,10 @@
+{
+  "name": "Clean Worship",
+  "master": 1.0,
+  "bypassed": false,
+  "effects": {
+    "drive": { "enabled": false, "params": { "type": 0, "drive": 25, "tone": 65, "level": 75 } },
+    "amp":   { "enabled": true,  "params": { "drive": 100, "level": 100 } },
+    "reverb":{ "enabled": true,  "params": { "size": 45, "damping": 55, "width": 100, "mix": 22, "freeze": 0 } }
+  }
+}
