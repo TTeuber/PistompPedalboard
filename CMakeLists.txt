@@ -14,7 +14,7 @@ find_library(ASOUND_LIB asound REQUIRED)
 juce_add_console_app(pedalboard PRODUCT_NAME "pedalboard")
 target_sources(pedalboard PRIVATE
   pedalboard.cpp
-  pedal_ui.cpp
+  ui/ui_controller.cpp
   web_server.cpp
   presets.cpp
 )

@@ -20,11 +20,14 @@
 #include "NAM/get_dsp.h"
 
 #include "chain.h"
+#include "fx_factory.h"
 #include "pedal_controls.h"
-#include "pedal_ui.h"
+#include "ui_events.h"
+#include "ui/ui_controller.h"
 #include "web_server.h"
 #include "presets.h"
 #include "effects/tuner.h"
+#include "effects/input_gain.h"
 #include "effects/gate.h"
 #include "effects/comp.h"
 #include "effects/drive.h"
@@ -38,6 +41,7 @@
 #include "lvgl_display.h"
 #include "encoder.h"
 #include "footswitch.h"
+#include "gpio_button.h"
 #include "leds.h"
 
 #include "lvgl.h"
@@ -68,15 +72,20 @@ static const snd_pcm_uframes_t WANT_BUFFER = 256;
 static const int RT_PRIORITY = 80;
 static const int MAX_FRAMES = 8192;
 
-// ---- pi-Stomp v3 control mapping -------------------------------------------
-static const int MASTER_D = 24, MASTER_CLK = 23;  // encoder 2 = master level
-static const int BYPASS_FS_CHANNEL = 0;            // footswitch 0 = global bypass
+// ---- pi-Stomp v3 control mapping (BCM/GPIO; see pistomp/pistomptre.py) ------
+// Four rotary controls: a dedicated NAV encoder + 3 tweak knobs. NAV drives the
+// on-screen cursor; enc1 push = Back; enc1/2/3 turn edit a pedal's params, and
+// enc3 doubles as master/output level everywhere else. All of this is now routed
+// through the UiController via a UiEvent queue -- the input thread never touches
+// LVGL or the chain directly.
+static const int NAV_D = 17,  NAV_CLK = 4;     // navigation encoder rotation
+static const int ENC1_D = 12, ENC1_CLK = 25, ENC1_SW = 16;
+static const int ENC2_D = 24, ENC2_CLK = 23;   // (push GPIO26, unused for now)
+static const int ENC3_D = 22, ENC3_CLK = 27;   // (no push switch on enc3)
 static const int BYPASS_LED_INDEX = 0;
-static const float MASTER_MAX = 2.0f, MASTER_STEP = 0.05f;
 
-// Navigation encoder push (MCP3008 ch4, rests high ~1022, pressed ~0): hold it
-// for QUIT_HOLD to exit cleanly back to the boot launcher's menu. The nav encoder
-// is otherwise unused here, so this can't collide with bypass (ch0)/master.
+// Navigation encoder push (MCP3008 ch4, rests high ~1022, pressed ~0): a short
+// press = select, a QUIT_HOLD hold = exit cleanly back to the boot launcher.
 // (Verified on-device; legacy pistomp.py mislabels this as ch7, which on the v3
 // board is actually a knob resting near the threshold.)
 static const int NAV_SW_CHANNEL = 4;
@@ -88,6 +97,8 @@ static const int WEB_PORT = 8080;
 // --- shared state -----------------------------------------------------------
 static PedalControls g_ctl;
 static Chain g_chain;
+static FxFactory g_fx;          // mints FX instances for the grid picker
+static EventQueue<64> g_events;  // input thread -> UI thread (lock-free SPSC)
 static std::atomic<const char*> g_fatal{nullptr};
 static std::mutex g_spi_lock;  // SPI0 shared by LCD (0.0) and footswitch ADC (0.1)
 
@@ -178,46 +189,57 @@ static void* audio_thread(void* arg) {
 }
 
 // ---------------- THE INPUT DOMAIN (~1 kHz) ----------------
+// Reads the encoders/switches and POSTS UiEvents -- it never touches LVGL or the
+// chain. The UI thread drains the queue and decides what each event means.
 static void input_loop() {
-  Encoder masterEnc;
-  Footswitch bypassFs, navSw;
-  if (!masterEnc.init(MASTER_D, MASTER_CLK, "pb_master") ||
-      !bypassFs.init(BYPASS_FS_CHANNEL) ||
+  Encoder navEnc, enc1, enc2, enc3;
+  GpioButton enc1Btn;
+  Footswitch navSw;
+  if (!navEnc.init(NAV_D, NAV_CLK, "pb_nav") ||
+      !enc1.init(ENC1_D, ENC1_CLK, "pb_enc1") ||
+      !enc2.init(ENC2_D, ENC2_CLK, "pb_enc2") ||
+      !enc3.init(ENC3_D, ENC3_CLK, "pb_enc3") ||
+      !enc1Btn.init(ENC1_SW, "pb_enc1_sw") ||
       !navSw.init(NAV_SW_CHANNEL, NAV_SW_THRESHOLD)) {
     fprintf(stderr, "input init failed (GPIO/SPI in use? run with sudo?)\n");
     g_ctl.running.store(false);
     return;
   }
-  bypassFs.set_spi_lock(&g_spi_lock);
   navSw.set_spi_lock(&g_spi_lock);
 
-  // Quit gesture: only arm after seeing a release, so the same nav-encoder push
-  // that launched us from the menu (and may still be held) can't quit instantly.
-  bool navArmed = false, navHolding = false;
+  // Nav push: short press = NavSelect, hold = quit. Arm only after a release so
+  // the launch press (still held from the menu) can't fire select/quit instantly.
+  bool navArmed = false, navHolding = false, navQuitFired = false, navDownPrev = false;
   std::chrono::steady_clock::time_point navStart;
 
   while (g_ctl.running.load()) {
-    if (int d = masterEnc.poll()) {
-      float m = g_ctl.masterLevel.load() + d * MASTER_STEP;
-      g_ctl.masterLevel.store(std::clamp(m, 0.0f, MASTER_MAX));
-    }
-    if (bypassFs.poll_pressed_edge())
-      g_ctl.bypassed.store(!g_ctl.bypassed.load());
+    if (int d = navEnc.poll()) g_events.push({UiEvent::NavRotate, (int8_t)d});
+    if (int d = enc1.poll())   g_events.push({UiEvent::Enc1Turn, (int8_t)d});
+    if (int d = enc2.poll())   g_events.push({UiEvent::Enc2Turn, (int8_t)d});
+    if (int d = enc3.poll())   g_events.push({UiEvent::Enc3Turn, (int8_t)d});
+    if (enc1Btn.poll_pressed_edge()) g_events.push({UiEvent::Back, 0});
 
     bool navDown = navSw.is_pressed();
-    if (!navDown) { navArmed = true; navHolding = false; }
-    else if (navArmed) {
-      if (!navHolding) { navHolding = true; navStart = std::chrono::steady_clock::now(); }
-      else if (std::chrono::steady_clock::now() - navStart >= QUIT_HOLD) {
+    if (!navDown) {
+      if (navDownPrev && navArmed && !navQuitFired)
+        g_events.push({UiEvent::NavSelect, 0});
+      navArmed = true;
+      navHolding = false;
+      navQuitFired = false;
+    } else {
+      if (!navDownPrev) { navHolding = true; navStart = std::chrono::steady_clock::now(); }
+      if (navArmed && navHolding && !navQuitFired &&
+          std::chrono::steady_clock::now() - navStart >= QUIT_HOLD) {
         g_ctl.running.store(false);   // clean exit -> launcher shows the menu
+        navQuitFired = true;
         break;
       }
     }
+    navDownPrev = navDown;
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-  masterEnc.close();
-  bypassFs.close();
-  navSw.close();
+  navEnc.close(); enc1.close(); enc2.close(); enc3.close();
+  enc1Btn.close(); navSw.close();
 }
 
 // Resolve a path next to the executable (so web/ + presets/ are found regardless
@@ -250,22 +272,37 @@ int main(int argc, char** argv) {
   std::string ampName =
       model ? std::filesystem::path(modelPath).stem().string() : "Clean (no model)";
 
-  // --- build the chain in classic order. Order lives here in data; adding or
-  //     reordering effects is local to this one block. Gate first (clean up the
-  //     raw guitar), then drive/amp, then the stereo time + modulation effects. ---
+  // --- build the chain in the device UI's literal-linear order:
+  //       INPUT (level -> gate -> comp) -> FX (drive,chorus,delay,reverb) -> OUTPUT (amp -> eq)
+  //     plus the master/output level applied at the very end in the audio thread.
+  //     Each effect carries its UI Section so the Input/FX/Output pages can list
+  //     "their" pedals. Order lives here in data; the FX middle becomes runtime-
+  //     reorderable in phase 2. ---
   // Tuner taps the dry guitar at the very front; off by default, zero cost until
-  // engaged (from the web UI or, later, a footswitch). Kept as a typed pointer so
-  // the UI loop can run its (non-RT) pitch detection.
+  // engaged. Hidden section: it's a full-screen takeover, not a listed pedal. Kept
+  // as a typed pointer so the UI loop can run its (non-RT) pitch detection.
   fx::Tuner* tuner =
       static_cast<fx::Tuner*>(g_chain.add(std::make_unique<fx::Tuner>()));
-  g_chain.add(std::make_unique<fx::Gate>());
-  g_chain.add(std::make_unique<fx::Comp>());
-  g_chain.add(std::make_unique<fx::Drive>());
-  g_chain.add(std::make_unique<fx::AmpNam>(model.get(), ampName));
-  g_chain.add(std::make_unique<fx::EQ>());
-  g_chain.add(std::make_unique<fx::Chorus>());
-  g_chain.add(std::make_unique<fx::Delay>());
-  g_chain.add(std::make_unique<fx::Reverb>());
+  tuner->section = Section::Hidden;
+  g_chain.add(std::make_unique<fx::InputGain>())->section = Section::Input;
+  g_chain.add(std::make_unique<fx::Gate>())->section = Section::Input;
+  g_chain.add(std::make_unique<fx::Comp>())->section = Section::Input;
+  g_chain.add(std::make_unique<fx::AmpNam>(model.get(), ampName))->section = Section::Output;
+  g_chain.add(std::make_unique<fx::EQ>())->section = Section::Output;
+
+  // The FX (middle) region is a fixed grid of slots the user fills at runtime,
+  // including duplicates of a kind -- so FX can't be singletons. Register each
+  // kind with the factory (the picker mints fresh instances on demand) and
+  // pre-fill the first slots so the default chain matches what shipped before.
+  g_fx.add("drive",  "Drive",  [] { return std::make_unique<fx::Drive>(); });
+  g_fx.add("chorus", "Chorus", [] { return std::make_unique<fx::Chorus>(); });
+  g_fx.add("delay",  "Delay",  [] { return std::make_unique<fx::Delay>(); });
+  g_fx.add("reverb", "Reverb", [] { return std::make_unique<fx::Reverb>(); });
+  for (size_t i = 0; i < g_fx.kinds().size(); i++)
+    g_chain.fxPlaceInitial((int)i, g_fx.create(i));   // canonical ids seed the factory
+
+  // Partition prefix/suffix and publish the initial FX order for the audio thread.
+  g_chain.finalize();
 
   // --- ALSA open + configure ---
   snd_pcm_t* cap = nullptr; snd_pcm_t* play = nullptr;
@@ -305,7 +342,8 @@ int main(int argc, char** argv) {
   if (!lcd.init(/*rotation=*/1)) { fprintf(stderr, "LCD init failed\n"); return 1; }
   lcd.set_spi_lock(&g_spi_lock);
   lvgl_display::init(lcd);
-  pedal_ui::build(ampName.c_str(), g_chain);
+  UiController ui(g_chain, g_ctl, g_fx, tuner, ampName, presetDir);
+  ui.begin();
 
   // --- NeoPixels (optional) ---
   Leds leds;
@@ -351,7 +389,7 @@ int main(int argc, char** argv) {
   signal(SIGINT, on_sigint);
 
   printf("Pedalboard live: period=%lu, ~%.1f ms each-way, prio=%d. "
-         "Encoder=master, footswitch=bypass. Ctrl-C to stop.\n",
+         "Nav encoder=navigate, enc1=back, enc3=master. Ctrl-C to stop.\n",
          (unsigned long)period, 1000.0 * play_b / RATE, RT_PRIORITY);
 
   // --- UI / LED loop (~50 Hz) ---
@@ -359,7 +397,9 @@ int main(int argc, char** argv) {
   while (g_ctl.running.load()) {
     lv_timer_handler();
     tuner->analyze();  // non-RT pitch detection (no-op while disengaged)
-    pedal_ui::update(g_chain, g_ctl);
+    UiEvent ev;
+    while (g_events.pop(ev)) ui.handle(ev);   // drain input -> navigate/edit
+    ui.refresh();
 
     bool b = g_ctl.bypassed.load();
     if (haveLeds && b != lastBypass) {

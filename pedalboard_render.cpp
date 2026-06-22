@@ -48,15 +48,17 @@ int main(int argc, char** argv) {
   }
 
   Chain chain;
-  chain.add(std::make_unique<fx::Tuner>());  // off by default; here for parity
-  chain.add(std::make_unique<fx::Gate>());
-  chain.add(std::make_unique<fx::Comp>());
-  chain.add(std::make_unique<fx::Drive>());
-  chain.add(std::make_unique<fx::AmpNam>(model.get(), "render"));
-  chain.add(std::make_unique<fx::EQ>());
-  chain.add(std::make_unique<fx::Chorus>());
-  chain.add(std::make_unique<fx::Delay>());
-  chain.add(std::make_unique<fx::Reverb>());
+  // Singletons (prefix/suffix) by section; FX go in grid slots like the live app.
+  chain.add(std::make_unique<fx::Tuner>())->section = Section::Hidden;  // off by default
+  chain.add(std::make_unique<fx::Gate>())->section = Section::Input;
+  chain.add(std::make_unique<fx::Comp>())->section = Section::Input;
+  chain.add(std::make_unique<fx::AmpNam>(model.get(), "render"))->section = Section::Output;
+  chain.add(std::make_unique<fx::EQ>())->section = Section::Output;
+  chain.fxPlaceInitial(0, std::make_unique<fx::Drive>());
+  chain.fxPlaceInitial(1, std::make_unique<fx::Chorus>());
+  chain.fxPlaceInitial(2, std::make_unique<fx::Delay>());
+  chain.fxPlaceInitial(3, std::make_unique<fx::Reverb>());
+  chain.finalize();  // partition prefix/suffix + publish FX order
   chain.prepare(sr, block);
 
   // Synthetic input: decaying plucked 110 Hz + a little noise, mono fanned L=R.

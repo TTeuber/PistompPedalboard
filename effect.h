@@ -44,17 +44,29 @@ struct Param {
   }
 };
 
+// Which page of the device UI an effect belongs to. The chain is one flat ordered
+// vector (signal order), but the UI groups it into Input / FX / Output sections;
+// each effect carries its section so a page can list "its" pedals. Hidden = not
+// shown as an editable pedal (e.g. the Tuner, which is a full-screen takeover).
+enum class Section { Input, Fx, Output, Hidden };
+
 class Effect {
 public:
   Effect(std::string type, std::string name)
       : type_id_(std::move(type)), name_(std::move(name)) {}
   virtual ~Effect() = default;
 
+  // UI grouping (set at chain-build time). Defaults to Fx (the movable middle).
+  Section section = Section::Fx;
+
   // Stable identifier for the kind of effect ("drive", "reverb", "amp", ...).
   // Used as the API/preset key, so it must be unique within a chain.
   const std::string& type_id() const noexcept { return type_id_; }
   const std::string& name() const noexcept { return name_; }
   void set_name(std::string n) { name_ = std::move(n); }
+  // The factory rewrites this so duplicate instances of one kind stay unique
+  // ("reverb", "reverb-2", ...). Must stay unique within a chain (preset/web key).
+  void set_type_id(std::string t) { type_id_ = std::move(t); }
 
   // Allocate/size everything here (NOT in process). Called once before the audio
   // thread goes real-time, and again if the block size grows.
