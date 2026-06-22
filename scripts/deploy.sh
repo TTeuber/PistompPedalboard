@@ -40,6 +40,13 @@ if [[ "$TARGET" == "pedalboard" ]]; then
   rsync -avz pedalboard/presets "$PI_USER@$PI_HOST:$PI_DIR/"
 fi
 
+# The launcher reads its program list from programs.json next to the binary
+# (also via /proc/self/exe). Ship it so the boot menu has something to show.
+if [[ "$TARGET" == "launcher" ]]; then
+  echo ">> deploying programs.json"
+  rsync -avz launcher/programs.json "$PI_USER@$PI_HOST:$PI_DIR/"
+fi
+
 if [[ "${1:-}" == "--run" ]]; then
   shift
   echo ">> running $PI_DIR/$TARGET on the Pi"

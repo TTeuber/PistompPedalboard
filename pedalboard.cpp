@@ -74,6 +74,15 @@ static const int BYPASS_FS_CHANNEL = 0;            // footswitch 0 = global bypa
 static const int BYPASS_LED_INDEX = 0;
 static const float MASTER_MAX = 2.0f, MASTER_STEP = 0.05f;
 
+// Navigation encoder push (MCP3008 ch4, rests high ~1022, pressed ~0): hold it
+// for QUIT_HOLD to exit cleanly back to the boot launcher's menu. The nav encoder
+// is otherwise unused here, so this can't collide with bypass (ch0)/master.
+// (Verified on-device; legacy pistomp.py mislabels this as ch7, which on the v3
+// board is actually a knob resting near the threshold.)
+static const int NAV_SW_CHANNEL = 4;
+static const int NAV_SW_THRESHOLD = 512;
+static const std::chrono::milliseconds QUIT_HOLD{2000};
+
 static const int WEB_PORT = 8080;
 
 // --- shared state -----------------------------------------------------------
@@ -171,14 +180,21 @@ static void* audio_thread(void* arg) {
 // ---------------- THE INPUT DOMAIN (~1 kHz) ----------------
 static void input_loop() {
   Encoder masterEnc;
-  Footswitch bypassFs;
+  Footswitch bypassFs, navSw;
   if (!masterEnc.init(MASTER_D, MASTER_CLK, "pb_master") ||
-      !bypassFs.init(BYPASS_FS_CHANNEL)) {
+      !bypassFs.init(BYPASS_FS_CHANNEL) ||
+      !navSw.init(NAV_SW_CHANNEL, NAV_SW_THRESHOLD)) {
     fprintf(stderr, "input init failed (GPIO/SPI in use? run with sudo?)\n");
     g_ctl.running.store(false);
     return;
   }
   bypassFs.set_spi_lock(&g_spi_lock);
+  navSw.set_spi_lock(&g_spi_lock);
+
+  // Quit gesture: only arm after seeing a release, so the same nav-encoder push
+  // that launched us from the menu (and may still be held) can't quit instantly.
+  bool navArmed = false, navHolding = false;
+  std::chrono::steady_clock::time_point navStart;
 
   while (g_ctl.running.load()) {
     if (int d = masterEnc.poll()) {
@@ -187,10 +203,21 @@ static void input_loop() {
     }
     if (bypassFs.poll_pressed_edge())
       g_ctl.bypassed.store(!g_ctl.bypassed.load());
+
+    bool navDown = navSw.is_pressed();
+    if (!navDown) { navArmed = true; navHolding = false; }
+    else if (navArmed) {
+      if (!navHolding) { navHolding = true; navStart = std::chrono::steady_clock::now(); }
+      else if (std::chrono::steady_clock::now() - navStart >= QUIT_HOLD) {
+        g_ctl.running.store(false);   // clean exit -> launcher shows the menu
+        break;
+      }
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   masterEnc.close();
   bypassFs.close();
+  navSw.close();
 }
 
 // Resolve a path next to the executable (so web/ + presets/ are found regardless
