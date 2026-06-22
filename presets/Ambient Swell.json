@@ -3,8 +3,14 @@
   "master": 1.0,
   "bypassed": false,
   "effects": {
-    "drive": { "enabled": false, "params": { "type": 0, "drive": 20, "tone": 70, "level": 75 } },
-    "amp":   { "enabled": true,  "params": { "drive": 95, "level": 100 } },
-    "reverb":{ "enabled": true,  "params": { "size": 92, "damping": 30, "width": 100, "mix": 55, "freeze": 0 } }
+    "tuner":  { "enabled": false, "params": { "mute": 1, "ref": 440 } },
+    "gate":   { "enabled": false, "params": { "threshold": -70, "release": 250 } },
+    "comp":   { "enabled": true,  "params": { "amount": 35, "makeup": 5 } },
+    "drive":  { "enabled": false, "params": { "type": 0, "drive": 20, "tone": 70, "level": 75 } },
+    "amp":    { "enabled": true,  "params": { "drive": 95, "level": 100 } },
+    "eq":     { "enabled": true,  "params": { "low": -3, "mid": -1, "high": 3 } },
+    "chorus": { "enabled": true,  "params": { "rate": 0.45, "depth": 40, "feedback": 12, "mix": 45, "vibrato": 0 } },
+    "delay":  { "enabled": true,  "params": { "time": 480, "feedback": 45, "mix": 38, "tone": 45, "pingpong": 1 } },
+    "reverb": { "enabled": true,  "params": { "size": 92, "damping": 30, "width": 100, "mix": 55, "freeze": 0 } }
   }
 }

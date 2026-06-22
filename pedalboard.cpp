@@ -24,8 +24,14 @@
 #include "pedal_ui.h"
 #include "web_server.h"
 #include "presets.h"
+#include "effects/tuner.h"
+#include "effects/gate.h"
+#include "effects/comp.h"
 #include "effects/drive.h"
 #include "effects/amp_nam.h"
+#include "effects/eq.h"
+#include "effects/chorus.h"
+#include "effects/delay.h"
 #include "effects/reverb.h"
 
 #include "ili9341.h"
@@ -217,10 +223,21 @@ int main(int argc, char** argv) {
   std::string ampName =
       model ? std::filesystem::path(modelPath).stem().string() : "Clean (no model)";
 
-  // --- build the chain in classic order (vertical slice: Drive > Amp > Reverb).
-  //     Order lives here in data; adding/reordering effects is local to this. ---
+  // --- build the chain in classic order. Order lives here in data; adding or
+  //     reordering effects is local to this one block. Gate first (clean up the
+  //     raw guitar), then drive/amp, then the stereo time + modulation effects. ---
+  // Tuner taps the dry guitar at the very front; off by default, zero cost until
+  // engaged (from the web UI or, later, a footswitch). Kept as a typed pointer so
+  // the UI loop can run its (non-RT) pitch detection.
+  fx::Tuner* tuner =
+      static_cast<fx::Tuner*>(g_chain.add(std::make_unique<fx::Tuner>()));
+  g_chain.add(std::make_unique<fx::Gate>());
+  g_chain.add(std::make_unique<fx::Comp>());
   g_chain.add(std::make_unique<fx::Drive>());
   g_chain.add(std::make_unique<fx::AmpNam>(model.get(), ampName));
+  g_chain.add(std::make_unique<fx::EQ>());
+  g_chain.add(std::make_unique<fx::Chorus>());
+  g_chain.add(std::make_unique<fx::Delay>());
   g_chain.add(std::make_unique<fx::Reverb>());
 
   // --- ALSA open + configure ---
@@ -314,6 +331,7 @@ int main(int argc, char** argv) {
   bool lastBypass = !g_ctl.bypassed.load();
   while (g_ctl.running.load()) {
     lv_timer_handler();
+    tuner->analyze();  // non-RT pitch detection (no-op while disengaged)
     pedal_ui::update(g_chain, g_ctl);
 
     bool b = g_ctl.bypassed.load();

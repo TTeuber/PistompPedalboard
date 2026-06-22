@@ -39,6 +39,49 @@ struct Biquad {
     a1 = float(-2.0 * c / a0);
     a2 = float((1.0 - alpha) / a0);
   }
+
+  // RBJ cookbook peaking EQ (a bell at fc). All in-place: no allocation, safe to
+  // recompute on the audio thread when a knob moves.
+  void setPeak(double fc, double fs, double dBgain, double Q = 0.9) noexcept {
+    double A = std::pow(10.0, dBgain / 40.0);
+    double w0 = 2.0 * M_PI * fc / fs;
+    double c = std::cos(w0), s = std::sin(w0);
+    double alpha = s / (2.0 * Q);
+    double a0 = 1.0 + alpha / A;
+    b0 = float((1.0 + alpha * A) / a0);
+    b1 = float((-2.0 * c) / a0);
+    b2 = float((1.0 - alpha * A) / a0);
+    a1 = float((-2.0 * c) / a0);
+    a2 = float((1.0 - alpha / A) / a0);
+  }
+
+  // RBJ low shelf (slope S=1).
+  void setLowShelf(double fc, double fs, double dBgain) noexcept {
+    double A = std::pow(10.0, dBgain / 40.0);
+    double w0 = 2.0 * M_PI * fc / fs;
+    double c = std::cos(w0), s = std::sin(w0);
+    double sq = 2.0 * std::sqrt(A) * (s / 2.0 * std::sqrt(2.0));
+    double a0 = (A + 1.0) + (A - 1.0) * c + sq;
+    b0 = float(A * ((A + 1.0) - (A - 1.0) * c + sq) / a0);
+    b1 = float(2.0 * A * ((A - 1.0) - (A + 1.0) * c) / a0);
+    b2 = float(A * ((A + 1.0) - (A - 1.0) * c - sq) / a0);
+    a1 = float(-2.0 * ((A - 1.0) + (A + 1.0) * c) / a0);
+    a2 = float(((A + 1.0) + (A - 1.0) * c - sq) / a0);
+  }
+
+  // RBJ high shelf (slope S=1).
+  void setHighShelf(double fc, double fs, double dBgain) noexcept {
+    double A = std::pow(10.0, dBgain / 40.0);
+    double w0 = 2.0 * M_PI * fc / fs;
+    double c = std::cos(w0), s = std::sin(w0);
+    double sq = 2.0 * std::sqrt(A) * (s / 2.0 * std::sqrt(2.0));
+    double a0 = (A + 1.0) - (A - 1.0) * c + sq;
+    b0 = float(A * ((A + 1.0) + (A - 1.0) * c + sq) / a0);
+    b1 = float(-2.0 * A * ((A - 1.0) + (A + 1.0) * c) / a0);
+    b2 = float(A * ((A + 1.0) + (A - 1.0) * c - sq) / a0);
+    a1 = float(2.0 * ((A - 1.0) - (A + 1.0) * c) / a0);
+    a2 = float(((A + 1.0) - (A - 1.0) * c - sq) / a0);
+  }
 };
 
 // One-pole lowpass, used as a simple post-distortion tone control.

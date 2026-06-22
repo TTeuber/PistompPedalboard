@@ -12,8 +12,14 @@
 
 #include "chain.h"
 #include "pedal_controls.h"
+#include "effects/tuner.h"
+#include "effects/gate.h"
+#include "effects/comp.h"
 #include "effects/drive.h"
 #include "effects/amp_nam.h"
+#include "effects/eq.h"
+#include "effects/chorus.h"
+#include "effects/delay.h"
 #include "effects/reverb.h"
 
 #include <chrono>
@@ -42,8 +48,14 @@ int main(int argc, char** argv) {
   }
 
   Chain chain;
+  chain.add(std::make_unique<fx::Tuner>());  // off by default; here for parity
+  chain.add(std::make_unique<fx::Gate>());
+  chain.add(std::make_unique<fx::Comp>());
   chain.add(std::make_unique<fx::Drive>());
   chain.add(std::make_unique<fx::AmpNam>(model.get(), "render"));
+  chain.add(std::make_unique<fx::EQ>());
+  chain.add(std::make_unique<fx::Chorus>());
+  chain.add(std::make_unique<fx::Delay>());
   chain.add(std::make_unique<fx::Reverb>());
   chain.prepare(sr, block);
 
