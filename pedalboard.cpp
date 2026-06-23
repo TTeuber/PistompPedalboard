@@ -82,7 +82,12 @@ static const int NAV_D = 17,  NAV_CLK = 4;     // navigation encoder rotation
 static const int ENC1_D = 12, ENC1_CLK = 25, ENC1_SW = 16;
 static const int ENC2_D = 24, ENC2_CLK = 23;   // (push GPIO26, unused for now)
 static const int ENC3_D = 22, ENC3_CLK = 27;   // (no push switch on enc3)
-static const int BYPASS_LED_INDEX = 0;
+
+// Footswitches FS0..3 ride MCP3008 ch0..3 and map 1:1 to NeoPixels 0..3. A tap
+// toggles the effects bound to it (assignment lives in the UI); holding FS3
+// opens the tuner. FS3 acts on RELEASE so a hold doesn't also fire a tap.
+static const int FS_CHANNEL[4] = {0, 1, 2, 3};
+static const std::chrono::milliseconds FS_TUNER_HOLD{2000};
 
 // Navigation encoder push (MCP3008 ch4, rests high ~1022, pressed ~0): a short
 // press = select, a QUIT_HOLD hold = exit cleanly back to the boot launcher.
@@ -194,23 +199,32 @@ static void* audio_thread(void* arg) {
 static void input_loop() {
   Encoder navEnc, enc1, enc2, enc3;
   GpioButton enc1Btn;
-  Footswitch navSw;
+  Footswitch navSw, fs[4];
+  bool fsOk = true;
+  for (int i = 0; i < 4; i++) fsOk &= fs[i].init(FS_CHANNEL[i]);
   if (!navEnc.init(NAV_D, NAV_CLK, "pb_nav") ||
       !enc1.init(ENC1_D, ENC1_CLK, "pb_enc1") ||
       !enc2.init(ENC2_D, ENC2_CLK, "pb_enc2") ||
       !enc3.init(ENC3_D, ENC3_CLK, "pb_enc3") ||
       !enc1Btn.init(ENC1_SW, "pb_enc1_sw") ||
-      !navSw.init(NAV_SW_CHANNEL, NAV_SW_THRESHOLD)) {
+      !navSw.init(NAV_SW_CHANNEL, NAV_SW_THRESHOLD) || !fsOk) {
     fprintf(stderr, "input init failed (GPIO/SPI in use? run with sudo?)\n");
     g_ctl.running.store(false);
     return;
   }
   navSw.set_spi_lock(&g_spi_lock);
+  for (int i = 0; i < 4; i++) fs[i].set_spi_lock(&g_spi_lock);
 
   // Nav push: short press = NavSelect, hold = quit. Arm only after a release so
   // the launch press (still held from the menu) can't fire select/quit instantly.
   bool navArmed = false, navHolding = false, navQuitFired = false, navDownPrev = false;
   std::chrono::steady_clock::time_point navStart;
+
+  // FS3 is dual-function (tap = footswitch, hold = tuner), so it acts on RELEASE:
+  // a release before FS_TUNER_HOLD is a tap; passing the threshold fires the hold
+  // and suppresses the tap. FS0..2 are plain press-edge taps.
+  bool fs3DownPrev = false, fs3HoldFired = false;
+  std::chrono::steady_clock::time_point fs3Start;
 
   while (g_ctl.running.load()) {
     if (int d = navEnc.poll()) g_events.push({UiEvent::NavRotate, (int8_t)d});
@@ -218,6 +232,20 @@ static void input_loop() {
     if (int d = enc2.poll())   g_events.push({UiEvent::Enc2Turn, (int8_t)d});
     if (int d = enc3.poll())   g_events.push({UiEvent::Enc3Turn, (int8_t)d});
     if (enc1Btn.poll_pressed_edge()) g_events.push({UiEvent::Back, 0});
+
+    for (int i = 0; i < 3; i++)
+      if (fs[i].poll_pressed_edge()) g_events.push({UiEvent::Footswitch, (int8_t)i});
+
+    bool fs3Down = fs[3].is_pressed();
+    if (fs3Down && !fs3DownPrev) { fs3HoldFired = false; fs3Start = std::chrono::steady_clock::now(); }
+    if (!fs3Down && fs3DownPrev && !fs3HoldFired)
+      g_events.push({UiEvent::Footswitch, 3});   // tap on release
+    if (fs3Down && !fs3HoldFired &&
+        std::chrono::steady_clock::now() - fs3Start >= FS_TUNER_HOLD) {
+      g_events.push({UiEvent::FsHold, 3});        // hold -> tuner
+      fs3HoldFired = true;
+    }
+    fs3DownPrev = fs3Down;
 
     bool navDown = navSw.is_pressed();
     if (!navDown) {
@@ -240,6 +268,7 @@ static void input_loop() {
   }
   navEnc.close(); enc1.close(); enc2.close(); enc3.close();
   enc1Btn.close(); navSw.close();
+  for (int i = 0; i < 4; i++) fs[i].close();
 }
 
 // Resolve a path next to the executable (so web/ + presets/ are found regardless
@@ -357,7 +386,7 @@ int main(int argc, char** argv) {
   memset(g_R, 0, sizeof(g_R));
 
   // --- web server: the primary control surface ---
-  WebServer web(g_chain, g_ctl, webDir, presetDir);
+  WebServer web(g_chain, g_ctl, g_fx, webDir, presetDir);
   if (web.start("0.0.0.0", WEB_PORT))
     printf("Web UI: http://<pi-ip>:%d/  (serving %s)\n", WEB_PORT, webDir.c_str());
 
@@ -393,22 +422,13 @@ int main(int argc, char** argv) {
          (unsigned long)period, 1000.0 * play_b / RATE, RT_PRIORITY);
 
   // --- UI / LED loop (~50 Hz) ---
-  bool lastBypass = !g_ctl.bypassed.load();
   while (g_ctl.running.load()) {
     lv_timer_handler();
     tuner->analyze();  // non-RT pitch detection (no-op while disengaged)
     UiEvent ev;
     while (g_events.pop(ev)) ui.handle(ev);   // drain input -> navigate/edit
     ui.refresh();
-
-    bool b = g_ctl.bypassed.load();
-    if (haveLeds && b != lastBypass) {
-      leds.clear();
-      if (b) leds.set(BYPASS_LED_INDEX, 255, 0, 0);   // red   = bypassed
-      else   leds.set(BYPASS_LED_INDEX, 0, 255, 0);   // green = live
-      leds.show();
-      lastBypass = b;
-    }
+    if (haveLeds) ui.updateLeds(leds);        // footswitch LED colors
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 

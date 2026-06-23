@@ -9,6 +9,8 @@
 #include "../presets.h"
 #include "../effects/tuner.h"
 
+#include "leds.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -28,6 +30,16 @@ const lv_color_t kBad = LV_COLOR_MAKE(0xFF, 0x30, 0x30);
 
 constexpr float kMasterMax = 2.0f;
 constexpr float kMasterStep = 0.05f;
+
+// Footswitch palette (1-indexed for display): FS1 red, FS2 green, FS3 blue,
+// FS4 yellow -- matching the NeoPixels 0..3 under each stomp.
+struct FsColor { uint8_t r, g, b; const char* name; };
+const FsColor kFsColors[4] = {
+  {0xFF, 0x30, 0x30, "FS1"},   // red
+  {0x30, 0xFF, 0x30, "FS2"},   // green
+  {0x40, 0x80, 0xFF, "FS3"},   // blue
+  {0xFF, 0xC0, 0x00, "FS4"},   // yellow
+};
 
 constexpr int kRowY0 = 38, kRowH = 30, kRowStep = 34, kRowW = 300, kRowX = 10;
 
@@ -96,6 +108,7 @@ void UiController::rebuild() {
     case OutputList:    buildList(page_);    break;
     case FxGrid:        buildFxGrid();       break;
     case FxPicker:      buildFxPicker();     break;
+    case AssignPage:    buildAssign();       break;
     case MenuPage:      buildMenu();         break;
     case PedalControl:  buildPedalControl(); break;
     case MasterControl: buildMasterControl();break;
@@ -129,6 +142,7 @@ void UiController::select() {
     case ActGotoMenu:    goTo(MenuPage); break;
     case ActOpenEffect:  paramBase_ = 0; goTo(PedalControl, it.fx); break;
     case ActOpenMaster:  goTo(MasterControl); break;
+    case ActGotoAssign:  goTo(AssignPage); break;
     case ActOpenPicker:  pickerSlot_ = it.idx; goTo(FxPicker); break;
     case ActAddFx:
       if (pickerSlot_ >= 0)
@@ -159,7 +173,7 @@ void UiController::select() {
         rebuild();
       }
       break;
-    default: break;
+    case ActNone: break;
   }
 }
 
@@ -170,7 +184,8 @@ void UiController::back() {
     case FxGrid:
     case OutputList:
     case MenuPage:      goTo(Home); break;
-    case FxPicker:      goTo(FxGrid); break;
+    case FxPicker:
+    case AssignPage:    goTo(FxGrid); break;
     case MasterControl: goTo(OutputList); break;
     case PedalControl: {
       Page parent = Home;
@@ -332,6 +347,15 @@ void UiController::buildFxGrid() {
   lv_obj_t* scr = newScreen();
   topBar(scr, "FX");
 
+  // top-bar right: enter footswitch-assignment mode for these pedals.
+  lv_obj_t* asg = mkContainer(scr, 76, 24);
+  lv_obj_align(asg, LV_ALIGN_TOP_RIGHT, -6, 6);
+  lv_obj_t* al = lv_label_create(asg);
+  lv_label_set_text(al, "Assign");
+  lv_obj_set_style_text_color(al, kWhite, 0);
+  lv_obj_center(al);
+  items_.push_back({asg, al, ActGotoAssign, nullptr, 0});
+
   const int cols = 4, tileW = 70, tileH = 62, gapX = 6, gapY = 8;
   const int x0 = 8, y0 = 40;
 
@@ -345,11 +369,12 @@ void UiController::buildFxGrid() {
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(l, tileW - 8);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_center(l);
+    lv_obj_align(l, LV_ALIGN_CENTER, 0, -6);
     if (Effect* fx = chain_.fxAt(slot)) {
       bool on = fx->enabled.load();
       lv_label_set_text(l, fx->name().c_str());
       lv_obj_set_style_text_color(l, on ? kWhite : kGray, 0);
+      tileBinding(o, fx);
       items_.push_back({o, l, ActOpenEffect, fx, slot});
     } else {
       lv_label_set_text(l, "+");
@@ -360,6 +385,62 @@ void UiController::buildFxGrid() {
 
   lv_obj_t* hint = lv_label_create(scr);
   lv_label_set_text(hint, "K1 turn = move pedal");
+  lv_obj_set_style_text_color(hint, kDim, 0);
+  lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -4);
+}
+
+// Tint a pedal tile and add a small color chip showing which footswitch drives
+// it (and whether the binding is inverted). No-op for unbound effects.
+void UiController::tileBinding(lv_obj_t* tile, Effect* fx) {
+  if (!fx) return;
+  int fs = fx->fsAssign.load();
+  if (fs < 0 || fs > 3) return;
+  const FsColor& c = kFsColors[fs];
+  lv_obj_set_style_bg_color(tile, LV_COLOR_MAKE(c.r / 6, c.g / 6, c.b / 6), 0);
+  lv_obj_t* chip = lv_label_create(tile);
+  char b[16];
+  snprintf(b, sizeof b, "%s%s", c.name, fx->fsMode.load() == 1 ? " inv" : "");
+  lv_label_set_text(chip, b);
+  lv_obj_set_style_text_color(chip, LV_COLOR_MAKE(c.r, c.g, c.b), 0);
+  lv_obj_align(chip, LV_ALIGN_BOTTOM_MID, 0, 0);
+}
+
+// Footswitch-assignment mode: the same FX pedals, but pressing a physical
+// footswitch (handled in onFootswitch) binds it to the focused pedal instead of
+// toggling it. Tiles are not selectable here.
+void UiController::buildAssign() {
+  lv_obj_t* scr = newScreen();
+  topBar(scr, "ASSIGN");
+
+  const int cols = 4, tileW = 70, tileH = 62, gapX = 6, gapY = 8;
+  const int x0 = 8, y0 = 40;
+
+  for (int slot = 0; slot < chain_.fxSlotCount(); slot++) {
+    int r = slot / cols, col = slot % cols;
+    int x = x0 + col * (tileW + gapX);
+    int y = y0 + r * (tileH + gapY);
+    lv_obj_t* o = mkContainer(scr, tileW, tileH);
+    lv_obj_align(o, LV_ALIGN_TOP_LEFT, x, y);
+    lv_obj_t* l = lv_label_create(o);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(l, tileW - 8);
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(l, LV_ALIGN_CENTER, 0, -6);
+    Effect* fx = chain_.fxAt(slot);
+    if (fx) {
+      lv_label_set_text(l, fx->name().c_str());
+      lv_obj_set_style_text_color(l, kWhite, 0);
+      tileBinding(o, fx);
+    } else {
+      lv_label_set_text(l, "-");
+      lv_obj_set_style_text_color(l, kDim, 0);
+    }
+    // fx may be null for empty slots; onFootswitch ignores those.
+    items_.push_back({o, l, ActNone, fx, slot});
+  }
+
+  lv_obj_t* hint = lv_label_create(scr);
+  lv_label_set_text(hint, "press a footswitch: bind / invert / clear");
   lv_obj_set_style_text_color(hint, kDim, 0);
   lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, -4);
 }
@@ -518,9 +599,69 @@ void UiController::handle(const UiEvent& e) {
     case UiEvent::FsHold:
       if (e.value == 3 && tuner_) tuner_->enabled.store(true);
       break;
-    case UiEvent::Footswitch: break;   // phase 3
+    case UiEvent::Footswitch: onFootswitch(e.value); break;
     default: break;
   }
+}
+
+// A footswitch tap. In assignment mode it (re)binds the focused pedal; normally
+// it latches the footswitch and drives every effect bound to it.
+void UiController::onFootswitch(int fs) {
+  if (fs < 0 || fs > 3) return;
+  if (page_ == AssignPage) {
+    if (focus_ >= 0 && focus_ < (int)items_.size() && items_[focus_].fx) {
+      int slot = items_[focus_].idx;
+      cycleAssign(items_[focus_].fx, fs);
+      rebuild();                       // refresh the tile's color/chip
+      for (int i = 0; i < (int)items_.size(); i++)
+        if (items_[i].idx == slot && items_[i].fx) { focus_ = i; break; }
+      applyFocus();
+    }
+    return;
+  }
+  fsEngaged_[fs] = !fsEngaged_[fs];
+  applyFsToEffects(fs);
+}
+
+// Cycle this effect's binding for one footswitch: unassigned (or bound to a
+// different FS) -> normal -> inverted -> unassigned. Then sync its enabled state.
+void UiController::cycleAssign(Effect* fx, int fs) {
+  int cur = fx->fsAssign.load();
+  if (cur != fs)            { fx->fsAssign.store(fs); fx->fsMode.store(0); }
+  else if (fx->fsMode.load() == 0) { fx->fsMode.store(1); }
+  else                      { fx->fsAssign.store(-1); fx->fsMode.store(0); }
+
+  int a = fx->fsAssign.load();
+  if (a >= 0) fx->enabled.store(fsEngaged_[a] ^ (fx->fsMode.load() == 1));
+}
+
+void UiController::applyFsToEffects(int fs) {
+  for (auto* e : chain_.effects())
+    if (e->fsAssign.load() == fs)
+      e->enabled.store(fsEngaged_[fs] ^ (e->fsMode.load() == 1));
+}
+
+// Light NeoPixels 0..3 in each footswitch's color -- always lit so the colors
+// stay readable: bright when that switch is engaged, dim when off. LED 5 mirrors
+// the global bypass (red). Only pushes a frame when something changed, so the
+// LCD and footswitch ADC don't fight over the SPI bus every tick.
+void UiController::updateLeds(Leds& leds) {
+  bool bypassed = ctl_.bypassed.load();
+
+  uint32_t sig = bypassed ? (1u << 4) : 0u;
+  for (int fs = 0; fs < 4; fs++)
+    if (fsEngaged_[fs]) sig |= 1u << fs;
+  if (sig == ledSig_) return;
+  ledSig_ = sig;
+
+  leds.clear();
+  for (int fs = 0; fs < 4; fs++) {
+    const FsColor& c = kFsColors[fs];
+    if (fsEngaged_[fs]) leds.set(fs, c.r, c.g, c.b);
+    else                leds.set(fs, c.r / 2, c.g / 2, c.b / 2);   // 50% dim (below ~50% reads as off)
+  }
+  if (bypassed) leds.set(5, 80, 0, 0);   // spare LED = global bypass indicator
+  leds.show();
 }
 
 void UiController::setEffectRowText(const FocusItem& it) {
@@ -591,6 +732,7 @@ void UiController::refresh() {
       break;
 
     case FxPicker:
+    case AssignPage:
       break;
 
     case MenuPage:

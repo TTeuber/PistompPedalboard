@@ -50,17 +50,58 @@ header {
 .presets button:hover { border-color: var(--accent); }
 .telemetry { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; }
 
+/* Three lanes: Input | FX grid | Output -- mirrors the device home page. */
 .board {
-  display: grid; gap: 16px; padding: 20px;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  display: grid; gap: 16px; padding: 20px; align-items: start;
+  grid-template-columns: minmax(220px, 1fr) minmax(360px, 2.4fr) minmax(220px, 1fr);
 }
+@media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
+.lane {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
+}
+.lane-title {
+  font-size: 13px; margin: 0 0 12px; letter-spacing: .6px; text-transform: uppercase;
+  color: var(--muted); display: flex; align-items: baseline; gap: 8px;
+}
+.lane-sub { font-size: 11px; letter-spacing: .2px; text-transform: none; color: var(--muted); opacity: .7; }
+.lane-body { display: flex; flex-direction: column; gap: 12px; }
+
+/* FX grid: 4 columns, mirrors the device's 4x2 slot layout. */
+.fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 1200px) { .fx-grid { grid-template-columns: repeat(2, 1fr); } }
+.slot-empty {
+  border: 1px dashed var(--line); border-radius: 12px; background: #0f141b;
+  min-height: 78px; display: flex; align-items: center; justify-content: center; padding: 8px;
+}
+.slot-empty select {
+  width: 100%; background: var(--panel2); color: var(--muted);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px; cursor: pointer;
+}
+.slot-empty select:hover { border-color: var(--accent); color: var(--text); }
+
 .pedal {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-  padding: 16px; transition: opacity .15s, border-color .15s;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px; transition: opacity .15s, border-color .15s;
 }
 .pedal.off { opacity: .5; }
-.pedal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.pedal-head h2 { font-size: 15px; margin: 0; letter-spacing: .3px; text-transform: uppercase; color: var(--accent); }
+.pedal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.pedal-head h3 { font-size: 13px; margin: 0; letter-spacing: .3px; text-transform: uppercase; color: var(--accent); }
+
+/* Footswitch assignment strip + grid pedal footer */
+.assign { display: flex; gap: 6px; margin: 12px 0 8px; }
+.fschip {
+  flex: 1; padding: 6px 0; border-radius: 7px; cursor: pointer; font-weight: 700; font-size: 12px;
+  color: var(--muted); background: #0b0f14; border: 1px solid var(--line);
+}
+.fschip.on { color: #04121a; background: var(--fs); border-color: var(--fs); box-shadow: 0 0 8px -2px var(--fs); }
+.fschip.inv { color: var(--fs); background: #0b0f14; border-color: var(--fs); }
+.pedal-foot { display: flex; gap: 6px; }
+.mini {
+  flex: 1; padding: 6px 0; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600;
+  background: #0b0f14; color: var(--text); border: 1px solid var(--line);
+}
+.mini:hover { border-color: var(--accent); }
+.mini.danger:hover { border-color: var(--red); color: var(--red); }
 .power {
   width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line);
   background: #0b0f14; cursor: pointer; position: relative;

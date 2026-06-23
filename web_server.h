@@ -13,13 +13,14 @@
 #include <thread>
 
 class Chain;
+class FxFactory;
 struct PedalControls;
 namespace httplib { class Server; }
 
 class WebServer {
 public:
-  WebServer(Chain& chain, PedalControls& ctl, std::string webDir,
-            std::string presetDir);
+  WebServer(Chain& chain, PedalControls& ctl, FxFactory& factory,
+            std::string webDir, std::string presetDir);
   ~WebServer();
 
   // Spawn the server thread. Returns false if the port can't be bound.
@@ -31,6 +32,7 @@ private:
 
   Chain& chain_;
   PedalControls& ctl_;
+  FxFactory& factory_;
   std::string webDir_;
   std::string presetDir_;
   std::unique_ptr<httplib::Server> svr_;

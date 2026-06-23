@@ -31,7 +31,22 @@
     <span id="telemetry" class="telemetry"></span>
   </section>
 
-  <main id="board" class="board"><!-- pedal cards injected from /api/state --></main>
+  <main class="board">
+    <section class="lane">
+      <h2 class="lane-title">Input</h2>
+      <div id="inputCol" class="lane-body"></div>
+    </section>
+
+    <section class="lane lane-fx">
+      <h2 class="lane-title">FX <span class="lane-sub">drag-free grid · ◀ ▶ to move</span></h2>
+      <div id="fxGrid" class="fx-grid"></div>
+    </section>
+
+    <section class="lane">
+      <h2 class="lane-title">Output</h2>
+      <div id="outputCol" class="lane-body"></div>
+    </section>
+  </main>
 
   <script src="app.js"></script>
 </body>

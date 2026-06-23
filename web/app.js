@@ -1,8 +1,13 @@
-// app.js -- generic pedalboard UI. Builds itself from /api/state, so new effects
-// (and, later, reordering) appear with no frontend changes. Pure vanilla JS.
+// app.js -- pedalboard web UI. Mirrors the device's Input / FX / Output layout:
+// an Input lane, an 8-slot FX grid (add / move / remove + footswitch assign),
+// and an Output lane. Everything is built from /api/state, so new effects appear
+// with no frontend changes. Pure vanilla JS.
 
 const $ = (sel) => document.querySelector(sel);
-const board = $("#board");
+
+// Footswitch colors, FS1..FS4 -- must match the device (kFsColors in
+// ui_controller.cpp): red / green / blue / yellow.
+const FS_COLORS = ["#ff453a", "#30d158", "#4d96ff", "#ffcc00"];
 
 async function api(path, body) {
   const opt = body
@@ -73,13 +78,40 @@ function send(effect, param, value) {
   sendTimers[key] = setTimeout(() => api("/api/param", { effect, param, value }).catch(console.error), 30);
 }
 
-function pedalCard(fx) {
+// Footswitch-assignment strip: four colored chips. Clicking one cycles this
+// pedal's binding for that footswitch -- unassigned -> on -> inverted -> clear --
+// exactly like pressing the physical switch on the device's assign page.
+function assignStrip(fx) {
+  const strip = document.createElement("div");
+  strip.className = "assign";
+  for (let i = 0; i < 4; i++) {
+    const chip = document.createElement("button");
+    chip.className = "fschip";
+    chip.style.setProperty("--fs", FS_COLORS[i]);
+    const active = fx.fsAssign === i;
+    chip.textContent = active && fx.fsMode === 1 ? (i + 1) + "⌀" : (i + 1);
+    if (active) chip.classList.add("on");
+    if (active && fx.fsMode === 1) chip.classList.add("inv");
+    chip.title = "Footswitch " + (i + 1);
+    chip.onclick = async () => {
+      let fs, mode;
+      if (fx.fsAssign !== i)      { fs = i;  mode = 0; }  // bind, normal
+      else if (fx.fsMode === 0)   { fs = i;  mode = 1; }  // -> inverted
+      else                        { fs = -1; mode = 0; }  // -> clear
+      render(await api("/api/assign", { effect: fx.type, fs, mode }));
+    };
+    strip.appendChild(chip);
+  }
+  return strip;
+}
+
+function pedalCard(fx, inGrid) {
   const card = document.createElement("div");
   card.className = "pedal" + (fx.enabled ? "" : " off");
 
   const head = document.createElement("div");
   head.className = "pedal-head";
-  const title = document.createElement("h2");
+  const title = document.createElement("h3");
   title.textContent = fx.name;
   const power = document.createElement("button");
   power.className = "power" + (fx.enabled ? " on" : "");
@@ -95,15 +127,62 @@ function pedalCard(fx) {
   card.appendChild(head);
 
   fx.params.forEach((p) => card.appendChild(paramControl(fx.type, p)));
+
+  if (inGrid) {
+    card.appendChild(assignStrip(fx));
+    const foot = document.createElement("div");
+    foot.className = "pedal-foot";
+    const mk = (txt, fn, cls) => {
+      const b = document.createElement("button");
+      b.className = "mini" + (cls ? " " + cls : "");
+      b.textContent = txt; b.onclick = fn; return b;
+    };
+    foot.appendChild(mk("◀", async () => render(await api("/api/fx/move", { slot: fx.slot, dir: -1 }))));
+    foot.appendChild(mk("✕", async () => render(await api("/api/fx/remove", { slot: fx.slot })), "danger"));
+    foot.appendChild(mk("▶", async () => render(await api("/api/fx/move", { slot: fx.slot, dir: 1 }))));
+    card.appendChild(foot);
+  }
   return card;
 }
 
+// An empty FX slot: a dashed tile whose dropdown adds a fresh effect instance.
+function emptySlot(slot, kinds) {
+  const tile = document.createElement("div");
+  tile.className = "slot-empty";
+  const sel = document.createElement("select");
+  const ph = document.createElement("option");
+  ph.value = ""; ph.textContent = "+ add effect";
+  sel.appendChild(ph);
+  kinds.forEach((k, i) => {
+    const o = document.createElement("option");
+    o.value = i; o.textContent = k.name; sel.appendChild(o);
+  });
+  sel.onchange = async () => {
+    if (sel.value === "") return;
+    render(await api("/api/fx/add", { slot, kind: +sel.value }));
+  };
+  tile.appendChild(sel);
+  return tile;
+}
+
 function render(state) {
-  board.innerHTML = "";
-  state.effects.forEach((fx) => board.appendChild(pedalCard(fx)));
+  // global controls
   const m = Math.round(state.master * 100);
   $("#master").value = m; $("#masterVal").textContent = m + "%";
   $("#bypass").classList.toggle("active", state.bypassed);
+
+  const inputCol = $("#inputCol"), outputCol = $("#outputCol"), grid = $("#fxGrid");
+  inputCol.innerHTML = ""; outputCol.innerHTML = ""; grid.innerHTML = "";
+
+  state.effects.filter((e) => e.section === "input").forEach((e) => inputCol.appendChild(pedalCard(e, false)));
+  state.effects.filter((e) => e.section === "output").forEach((e) => outputCol.appendChild(pedalCard(e, false)));
+
+  // FX grid: lay effects into their slot index; fill the gaps with add-tiles.
+  const bySlot = {};
+  state.effects.filter((e) => e.section === "fx").forEach((e) => { bySlot[e.slot] = e; });
+  for (let s = 0; s < state.fxSlotCount; s++) {
+    grid.appendChild(bySlot[s] ? pedalCard(bySlot[s], true) : emptySlot(s, state.fxKinds || []));
+  }
 }
 
 async function refresh() { render(await api("/api/state")); }

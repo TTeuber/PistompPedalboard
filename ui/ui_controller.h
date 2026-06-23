@@ -20,11 +20,13 @@
 
 #include "lvgl.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 class Chain;
 class FxFactory;
+class Leds;
 struct PedalControls;
 class Effect;
 namespace fx { class Tuner; }
@@ -37,16 +39,17 @@ public:
   void begin();                   // build the initial (Home) page
   void handle(const UiEvent& e);  // act on one input event
   void refresh();                 // per-frame: live values + tuner takeover
+  void updateLeds(Leds& leds);    // per-frame: footswitch LED colors (UI thread)
 
 private:
-  enum Page { Home, InputList, FxGrid, FxPicker, OutputList, MenuPage,
-              PedalControl, MasterControl };
+  enum Page { Home, InputList, FxGrid, FxPicker, AssignPage, OutputList,
+              MenuPage, PedalControl, MasterControl };
 
   enum Action {
     ActNone, ActBack, ActGotoInput, ActGotoFx, ActGotoOutput, ActGotoMenu,
     ActOpenEffect, ActOpenMaster, ActTogglePower, ActToggleBypass,
     ActToggleTuner, ActLoadPreset, ActParamBank,
-    ActOpenPicker, ActAddFx, ActRemoveFx
+    ActOpenPicker, ActAddFx, ActRemoveFx, ActGotoAssign
   };
 
   struct FocusItem {
@@ -65,6 +68,9 @@ private:
   void select();
   void back();
   void onKnob(int which, int dir);   // which = 0/1/2 (Enc1/2/3)
+  void onFootswitch(int fs);         // FS tap: toggle bound effects, or assign
+  void cycleAssign(Effect* fx, int fs);   // unassigned -> normal -> inverted -> off
+  void applyFsToEffects(int fs);     // sync enabled of effects bound to this FS
   void adjustMaster(int dir);
   void stepParam(Effect* fx, int paramIdx, int dir);
 
@@ -76,6 +82,8 @@ private:
   void buildList(Page p);     // InputList / OutputList
   void buildFxGrid();         // FX middle region: tiles + "+ Add"
   void buildFxPicker();       // choose an unplaced FX to add
+  void buildAssign();         // bind footswitches to FX pedals
+  void tileBinding(lv_obj_t* tile, Effect* fx);  // color/chip a tile by its FS
   void buildMenu();
   void buildPedalControl();
   void buildMasterControl();
@@ -102,6 +110,9 @@ private:
   std::vector<std::string> presetNames_;   // backs the Menu's "Load <name>" rows
 
   bool tunerActive_ = false;    // tuner full-screen takeover currently shown
+
+  bool fsEngaged_[4] = {true, true, true, true};  // latched footswitch state (on by default)
+  uint32_t ledSig_ = 0xFFFFFFFF;                       // last LED frame; -1 = force draw
 
   // dynamic widgets kept for per-frame refresh()
   lv_obj_t* homeMaster_ = nullptr;

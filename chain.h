@@ -29,6 +29,8 @@
 #include <array>
 #include <atomic>
 #include <memory>
+#include <mutex>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -90,6 +92,7 @@ public:
 
   // Lookup by type_id (unique within the chain). Used by the web/preset layer.
   Effect* find(const std::string& typeId) {
+    std::lock_guard<std::mutex> lk(editMutex_);
     for (auto& fx : effects_)
       if (fx->type_id() == typeId) return fx.get();
     for (auto& s : fxSlots_)
@@ -98,8 +101,9 @@ public:
   }
 
   // Snapshot of the whole chain in signal order (prefix, active FX, suffix).
-  // Used by the web/preset layer; safe on the UI thread.
+  // Used by the web/preset layer; safe on any non-audio thread.
   std::vector<Effect*> effects() const {
+    std::lock_guard<std::mutex> lk(editMutex_);
     std::vector<Effect*> out;
     out.reserve(prefix_.size() + kFxSlots + suffix_.size());
     for (auto* fx : prefix_) out.push_back(fx);
@@ -112,15 +116,29 @@ public:
   static constexpr int fxSlotCount() { return kFxSlots; }
 
   bool fxOccupied(int slot) const {
+    std::lock_guard<std::mutex> lk(editMutex_);
     return slot >= 0 && slot < kFxSlots && fxSlots_[(size_t)slot] != nullptr;
   }
   Effect* fxAt(int slot) const {
+    std::lock_guard<std::mutex> lk(editMutex_);
     return (slot >= 0 && slot < kFxSlots) ? fxSlots_[(size_t)slot].get() : nullptr;
   }
   int fxSlotOf(Effect* fx) const {
+    std::lock_guard<std::mutex> lk(editMutex_);
     for (int i = 0; i < kFxSlots; i++)
       if (fxSlots_[(size_t)i].get() == fx) return i;
     return -1;
+  }
+
+  // Snapshot of the grid as type_ids ("" = empty slot), consistent under one
+  // lock. Used by the web layer to render the 8-slot grid.
+  std::array<std::string, kFxSlots> fxGrid() const {
+    std::lock_guard<std::mutex> lk(editMutex_);
+    std::array<std::string, kFxSlots> out;
+    for (int i = 0; i < kFxSlots; i++)
+      out[(size_t)i] = fxSlots_[(size_t)i] ? fxSlots_[(size_t)i]->type_id()
+                                           : std::string{};
+    return out;
   }
 
   // Place a freshly-created (UNprepared) instance into a slot, replacing any
@@ -129,6 +147,7 @@ public:
   void fxPlace(int slot, std::unique_ptr<Effect> fx) {
     if (slot < 0 || slot >= kFxSlots || !fx) return;
     fx->prepare(sr_, maxBlock_);
+    std::lock_guard<std::mutex> lk(editMutex_);
     auto old = std::move(fxSlots_[(size_t)slot]);   // may be null
     fxSlots_[(size_t)slot] = std::move(fx);
     commit(std::move(old));
@@ -136,7 +155,8 @@ public:
 
   // Empty a slot (its effect stops processing; freed after the grace period).
   void fxRemove(int slot) {
-    if (!fxOccupied(slot)) return;
+    std::lock_guard<std::mutex> lk(editMutex_);
+    if (slot < 0 || slot >= kFxSlots || !fxSlots_[(size_t)slot]) return;
     auto removed = std::move(fxSlots_[(size_t)slot]);
     fxSlots_[(size_t)slot] = nullptr;
     commit(std::move(removed));
@@ -146,6 +166,7 @@ public:
   void fxMove(int slot, int dir) {
     int j = slot + (dir < 0 ? -1 : 1);
     if (slot < 0 || slot >= kFxSlots || j < 0 || j >= kFxSlots) return;
+    std::lock_guard<std::mutex> lk(editMutex_);
     std::swap(fxSlots_[(size_t)slot], fxSlots_[(size_t)j]);
     commit();
   }
@@ -179,4 +200,9 @@ private:
   std::unique_ptr<const FxOrder> fxLive_;               // currently published (owned)
   std::vector<std::unique_ptr<const FxOrder>> fxRetiredOrders_;   // awaiting reclaim
   std::vector<std::unique_ptr<Effect>> fxRetiredEffects_;         // awaiting reclaim
+
+  // Serializes grid edits + structural reads across the UI and web threads (now
+  // that both can mutate the grid). The AUDIO thread never touches this -- it
+  // reaches the FX list only through the atomic fxOrder_, so it stays lock-free.
+  mutable std::mutex editMutex_;
 };

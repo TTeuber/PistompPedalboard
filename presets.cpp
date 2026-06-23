@@ -23,6 +23,8 @@ nlohmann::json capture(const Chain& chain, const PedalControls& ctl) {
   for (const auto& fx : chain.effects()) {
     json e;
     e["enabled"] = fx->enabled.load();
+    e["fsAssign"] = fx->fsAssign.load();   // footswitch binding (phase 3)
+    e["fsMode"] = fx->fsMode.load();
     json params = json::object();
     for (const auto& p : fx->params) params[p->id] = p->get();
     e["params"] = params;
@@ -45,6 +47,10 @@ void apply(const nlohmann::json& doc, Chain& chain, PedalControls& ctl) {
     const json& e = it.value();
     if (e.contains("enabled") && e["enabled"].is_boolean())
       fx->enabled.store(e["enabled"].get<bool>());
+    if (e.contains("fsAssign") && e["fsAssign"].is_number_integer())
+      fx->fsAssign.store(e["fsAssign"].get<int>());
+    if (e.contains("fsMode") && e["fsMode"].is_number_integer())
+      fx->fsMode.store(e["fsMode"].get<int>());
     if (e.contains("params") && e["params"].is_object()) {
       for (auto pit = e["params"].begin(); pit != e["params"].end(); ++pit) {
         if (Param* p = fx->param(pit.key()))

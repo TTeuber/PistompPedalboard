@@ -4,6 +4,7 @@
 
 #include "chain.h"
 #include "effect.h"
+#include "fx_factory.h"
 #include "pedal_controls.h"
 #include "presets.h"
 
@@ -16,11 +17,25 @@ using nlohmann::json;
 
 namespace {
 
-// Full state WITH metadata, so the browser can build its own sliders.
-json fullState(const Chain& chain, const PedalControls& ctl) {
+const char* sectionName(Section s) {
+  switch (s) {
+    case Section::Input:  return "input";
+    case Section::Fx:     return "fx";
+    case Section::Output: return "output";
+    case Section::Hidden: return "hidden";
+  }
+  return "fx";
+}
+
+// Full state WITH metadata, so the browser can build its own UI: per-effect
+// section + FX-grid slot + footswitch assignment, plus the grid size and the
+// pickable FX kinds. The browser mirrors the device's Input / FX / Output layout.
+json fullState(const Chain& chain, const PedalControls& ctl,
+               const FxFactory& factory) {
   json doc;
   doc["master"] = ctl.masterLevel.load();
   doc["bypassed"] = ctl.bypassed.load();
+  doc["fxSlotCount"] = Chain::kFxSlots;
 
   json order = json::array();
   json effects = json::array();
@@ -30,6 +45,10 @@ json fullState(const Chain& chain, const PedalControls& ctl) {
     e["type"] = fx->type_id();
     e["name"] = fx->name();
     e["enabled"] = fx->enabled.load();
+    e["section"] = sectionName(fx->section);
+    e["slot"] = chain.fxSlotOf(fx);        // -1 unless it lives in the FX grid
+    e["fsAssign"] = fx->fsAssign.load();   // -1 = unassigned, else 0..3
+    e["fsMode"] = fx->fsMode.load();       // 0 normal, 1 inverted
     json params = json::array();
     for (const auto& p : fx->params) {
       params.push_back({{"id", p->id},
@@ -45,6 +64,11 @@ json fullState(const Chain& chain, const PedalControls& ctl) {
   }
   doc["order"] = order;     // chain order (data, not hardcoded -> reorderable)
   doc["effects"] = effects;
+
+  json kinds = json::array();
+  for (const auto& k : factory.kinds())
+    kinds.push_back({{"type", k.type}, {"name", k.name}});
+  doc["fxKinds"] = kinds;   // the picker's menu of placeable effects
   return doc;
 }
 
@@ -66,9 +90,9 @@ void ok(httplib::Response& res) {
 
 }  // namespace
 
-WebServer::WebServer(Chain& chain, PedalControls& ctl, std::string webDir,
-                     std::string presetDir)
-    : chain_(chain), ctl_(ctl), webDir_(std::move(webDir)),
+WebServer::WebServer(Chain& chain, PedalControls& ctl, FxFactory& factory,
+                     std::string webDir, std::string presetDir)
+    : chain_(chain), ctl_(ctl), factory_(factory), webDir_(std::move(webDir)),
       presetDir_(std::move(presetDir)), svr_(std::make_unique<httplib::Server>()) {
 }
 
@@ -79,7 +103,7 @@ void WebServer::setupRoutes() {
   if (!webDir_.empty()) svr_->set_mount_point("/", webDir_);
 
   svr_->Get("/api/state", [this](const httplib::Request&, httplib::Response& res) {
-    res.set_content(fullState(chain_, ctl_).dump(), "application/json");
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
   });
 
   svr_->Get("/api/telemetry", [this](const httplib::Request&, httplib::Response& res) {
@@ -125,6 +149,59 @@ void WebServer::setupRoutes() {
     ok(res);
   });
 
+  // ---- FX grid editing (mirrors the device's FxGrid page) ------------------
+  // All three return the full state so the browser re-renders the grid exactly
+  // as the chain now is. Chain edit methods are internally synchronized.
+
+  // {slot, kind}  -- kind = index into fxKinds; mints a fresh instance.
+  svr_->Post("/api/fx/add", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    int slot = b.value("slot", -1);
+    size_t kind = (size_t)b.value("kind", -1);
+    auto fx = factory_.create(kind);
+    if (slot < 0 || slot >= Chain::kFxSlots || !fx) { res.status = 400; return; }
+    chain_.fxPlace(slot, std::move(fx));
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
+  });
+
+  // {slot}
+  svr_->Post("/api/fx/remove", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    chain_.fxRemove(b.value("slot", -1));
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
+  });
+
+  // {slot, dir}  -- dir < 0 toward front, dir > 0 toward back.
+  svr_->Post("/api/fx/move", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    chain_.fxMove(b.value("slot", -1), b.value("dir", 0));
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
+  });
+
+  // {effect, fs, mode}  -- fs 0..3 (or -1 to clear), mode 0 normal / 1 inverted.
+  // Mirrors the device assign page; keeps `enabled` consistent with the binding
+  // (footswitches default to engaged, so normal = on, inverted = off).
+  svr_->Post("/api/assign", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    if (!fx) { res.status = 404; return; }
+    int fs = b.value("fs", -1);
+    int mode = b.value("mode", 0);
+    if (fs < 0 || fs > 3) {
+      fx->fsAssign.store(-1);
+      fx->fsMode.store(0);
+    } else {
+      fx->fsAssign.store(fs);
+      fx->fsMode.store(mode);
+      fx->enabled.store(mode != 1);   // engaged-by-default => normal on, inverted off
+    }
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
+  });
+
   svr_->Get("/api/presets", [this](const httplib::Request&, httplib::Response& res) {
     json arr = presets::list(presetDir_);
     res.set_content(arr.dump(), "application/json");
@@ -140,7 +217,7 @@ void WebServer::setupRoutes() {
       res.set_content("{\"error\":\"no such preset\"}", "application/json");
       return;
     }
-    res.set_content(fullState(chain_, ctl_).dump(), "application/json");
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
   });
 
   // {name}

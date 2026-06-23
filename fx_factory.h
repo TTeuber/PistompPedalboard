@@ -18,6 +18,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,11 +39,13 @@ public:
   const std::vector<FxKind>& kinds() const { return kinds_; }
 
   // Build a fresh (unprepared) instance of kinds_[i] with a unique type_id.
+  // Safe to call from the UI and web threads concurrently (counts_ is guarded).
   std::unique_ptr<Effect> create(size_t i) {
     if (i >= kinds_.size()) return nullptr;
     const FxKind& k = kinds_[i];
     auto fx = k.make();
     if (!fx) return nullptr;
+    std::lock_guard<std::mutex> lk(countsMutex_);
     int n = ++counts_[k.type];
     if (n > 1) fx->set_type_id(k.type + "-" + std::to_string(n));
     return fx;
@@ -51,4 +54,5 @@ public:
 private:
   std::vector<FxKind> kinds_;
   std::map<std::string, int> counts_;   // per-kind instance count, for unique ids
+  std::mutex countsMutex_;
 };

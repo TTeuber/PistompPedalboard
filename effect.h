@@ -79,6 +79,13 @@ public:
   // true = engaged. The chain skips disabled effects. Lock-free toggle.
   std::atomic<bool> enabled{true};
 
+  // Footswitch assignment (phase 3). fsAssign = which footswitch (0..3) toggles
+  // this effect, or -1 for none. fsMode = 0 normal (on when the FS is engaged)
+  // or 1 inverted (on when it is NOT). Written by the UI thread, read anywhere;
+  // the UI thread keeps `enabled` in sync with the bound footswitch's state.
+  std::atomic<int> fsAssign{-1};
+  std::atomic<int> fsMode{0};
+
   std::vector<std::unique_ptr<Param>> params;
 
   Param* param(const std::string& id) {
