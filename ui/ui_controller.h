@@ -70,7 +70,6 @@ private:
   void onKnob(int which, int dir);   // which = 0/1/2 (Enc1/2/3)
   void onFootswitch(int fs);         // FS tap: toggle bound effects, or assign
   void cycleAssign(Effect* fx, int fs);   // unassigned -> normal -> inverted -> off
-  void applyFsToEffects(int fs);     // sync enabled of effects bound to this FS
   void adjustMaster(int dir);
   void stepParam(Effect* fx, int paramIdx, int dir);
 
@@ -111,7 +110,6 @@ private:
 
   bool tunerActive_ = false;    // tuner full-screen takeover currently shown
 
-  bool fsEngaged_[4] = {true, true, true, true};  // latched footswitch state (on by default)
   uint32_t ledSig_ = 0xFFFFFFFF;                       // last LED frame; -1 = force draw
 
   // dynamic widgets kept for per-frame refresh()

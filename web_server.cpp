@@ -4,6 +4,7 @@
 
 #include "chain.h"
 #include "effect.h"
+#include "footswitch_control.h"
 #include "fx_factory.h"
 #include "pedal_controls.h"
 #include "presets.h"
@@ -11,7 +12,10 @@
 #include <httplib.h>
 #include <json.hpp>
 
+#include <chrono>
 #include <cstdio>
+#include <memory>
+#include <thread>
 
 using nlohmann::json;
 
@@ -36,6 +40,12 @@ json fullState(const Chain& chain, const PedalControls& ctl,
   doc["master"] = ctl.masterLevel.load();
   doc["bypassed"] = ctl.bypassed.load();
   doc["fxSlotCount"] = Chain::kFxSlots;
+
+  // Latched footswitch state, FS1..FS4 -- so the browser can show + toggle the
+  // same switches the device has (the LCD/LEDs and the web share one truth).
+  json fsw = json::array();
+  for (int i = 0; i < 4; i++) fsw.push_back(ctl.fsEngaged[i].load());
+  doc["footswitches"] = fsw;
 
   json order = json::array();
   json effects = json::array();
@@ -197,9 +207,64 @@ void WebServer::setupRoutes() {
     } else {
       fx->fsAssign.store(fs);
       fx->fsMode.store(mode);
-      fx->enabled.store(mode != 1);   // engaged-by-default => normal on, inverted off
+      // Sync enabled from the bound switch's actual latched state (normal = on
+      // when engaged, inverted = on when not) -- same rule as the device.
+      fx->enabled.store(ctl_.fsEngaged[fs].load() ^ (mode == 1));
     }
     res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
+  });
+
+  // {fs, engaged?}  -- toggle (or, if `engaged` is given, set) a footswitch
+  // latch, then sync every effect bound to it. Mirrors a physical FS tap; the
+  // device LEDs + LCD pick the change up on their next frame.
+  svr_->Post("/api/footswitch", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    int fs = b.value("fs", -1);
+    if (fs < 0 || fs > 3) { res.status = 400; return; }
+    if (b.contains("engaged")) {
+      ctl_.fsEngaged[fs].store(b["engaged"].get<bool>());
+      applyFootswitch(chain_, ctl_, fs);
+    } else {
+      toggleFootswitch(chain_, ctl_, fs);
+    }
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
+  });
+
+  // Server-Sent Events: a long-lived stream that pushes the FULL state whenever
+  // it changes -- so a turn of a hardware encoder (or an edit from another
+  // browser) shows up live without polling. We DIFF the serialized state every
+  // ~100ms rather than hand-incrementing a revision at each mutation site: the
+  // state blob is tiny, and a diff can't forget to fire. Telemetry is NOT in
+  // here (it changes every audio block) -- the browser polls that separately so
+  // it doesn't trigger a re-render storm.
+  svr_->Get("/api/events", [this](const httplib::Request&, httplib::Response& res) {
+    res.set_header("Cache-Control", "no-cache");
+    auto last  = std::make_shared<std::string>();  // last blob sent on THIS stream
+    auto quiet = std::make_shared<int>(0);          // ticks since the last write
+    res.set_chunked_content_provider(
+        "text/event-stream",
+        [this, last, quiet](size_t /*offset*/, httplib::DataSink& sink) {
+          // Throttle the poll; the sleep also bounds CPU and caps change latency.
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          if (!ctl_.running.load()) { sink.done(); return false; }
+
+          std::string cur = fullState(chain_, ctl_, factory_).dump();
+          if (cur != *last) {
+            *last = cur;
+            *quiet = 0;
+            std::string msg = "data: " + cur + "\n\n";
+            return sink.write(msg.data(), msg.size());   // false => client gone
+          }
+          // Heartbeat (~every 3s) so a dead connection is detected and proxies
+          // don't time the stream out.
+          if (++*quiet >= 30) {
+            *quiet = 0;
+            static const std::string ping = ": ping\n\n";
+            return sink.write(ping.data(), ping.size());
+          }
+          return true;   // nothing changed this tick; we'll be called again
+        });
   });
 
   svr_->Get("/api/presets", [this](const httplib::Request&, httplib::Response& res) {

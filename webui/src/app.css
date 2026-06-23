@@ -26,7 +26,11 @@ header {
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: .2px; }
 .brand em { color: var(--accent); font-style: normal; font-weight: 500; }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
+.dot {
+  width: 10px; height: 10px; border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 10px var(--green); transition: background .2s, box-shadow .2s;
+}
+.dot.offline { background: var(--muted); box-shadow: none; }
 .globals { display: flex; align-items: center; gap: 16px; }
 .master { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .master output { color: var(--text); min-width: 42px; text-align: right; }
@@ -65,6 +69,24 @@ header {
 }
 .lane-sub { font-size: 11px; letter-spacing: .2px; text-transform: none; color: var(--muted); opacity: .7; }
 .lane-body { display: flex; flex-direction: column; gap: 12px; }
+
+/* Live footswitch bar: tap to toggle the same latches as the hardware stomps. */
+.fsbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+.fsswitch {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 10px 0; border-radius: 10px; cursor: pointer; font: inherit;
+  background: #0b0f14; color: var(--muted);
+  border: 1px solid var(--line); border-bottom: 3px solid var(--line);
+  transition: background .12s, color .12s, border-color .12s, box-shadow .12s;
+}
+.fsswitch .fsnum { font-weight: 700; font-size: 12px; letter-spacing: .5px; }
+.fsswitch .fsstate { font-size: 10px; font-variant-numeric: tabular-nums; }
+.fsswitch.engaged {
+  color: #04121a; background: var(--fs); border-color: var(--fs);
+  border-bottom-color: color-mix(in srgb, var(--fs) 55%, #000);
+  box-shadow: 0 0 10px -2px var(--fs);
+}
+.fsswitch.idle { opacity: .5; }   /* no pedals bound -> visually inert */
 
 /* FX grid: 4 columns, mirrors the device's 4x2 slot layout. */
 .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }

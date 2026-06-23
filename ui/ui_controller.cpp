@@ -4,6 +4,7 @@
 
 #include "../chain.h"
 #include "../effect.h"
+#include "../footswitch_control.h"
 #include "../fx_factory.h"
 #include "../pedal_controls.h"
 #include "../presets.h"
@@ -619,8 +620,7 @@ void UiController::onFootswitch(int fs) {
     }
     return;
   }
-  fsEngaged_[fs] = !fsEngaged_[fs];
-  applyFsToEffects(fs);
+  toggleFootswitch(chain_, ctl_, fs);   // flip the shared latch + sync bound FX
 }
 
 // Cycle this effect's binding for one footswitch: unassigned (or bound to a
@@ -632,13 +632,7 @@ void UiController::cycleAssign(Effect* fx, int fs) {
   else                      { fx->fsAssign.store(-1); fx->fsMode.store(0); }
 
   int a = fx->fsAssign.load();
-  if (a >= 0) fx->enabled.store(fsEngaged_[a] ^ (fx->fsMode.load() == 1));
-}
-
-void UiController::applyFsToEffects(int fs) {
-  for (auto* e : chain_.effects())
-    if (e->fsAssign.load() == fs)
-      e->enabled.store(fsEngaged_[fs] ^ (e->fsMode.load() == 1));
+  if (a >= 0) fx->enabled.store(ctl_.fsEngaged[a].load() ^ (fx->fsMode.load() == 1));
 }
 
 // Light NeoPixels 0..3 in each footswitch's color -- always lit so the colors
@@ -650,14 +644,14 @@ void UiController::updateLeds(Leds& leds) {
 
   uint32_t sig = bypassed ? (1u << 4) : 0u;
   for (int fs = 0; fs < 4; fs++)
-    if (fsEngaged_[fs]) sig |= 1u << fs;
+    if (ctl_.fsEngaged[fs].load()) sig |= 1u << fs;
   if (sig == ledSig_) return;
   ledSig_ = sig;
 
   leds.clear();
   for (int fs = 0; fs < 4; fs++) {
     const FsColor& c = kFsColors[fs];
-    if (fsEngaged_[fs]) leds.set(fs, c.r, c.g, c.b);
+    if (ctl_.fsEngaged[fs].load()) leds.set(fs, c.r, c.g, c.b);
     else                leds.set(fs, c.r / 2, c.g / 2, c.b / 2);   // 50% dim (below ~50% reads as off)
   }
   if (bypassed) leds.set(5, 80, 0, 0);   // spare LED = global bypass indicator

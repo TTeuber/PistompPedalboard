@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ninja-build \
       pkg-config \
       git \
+      curl \
       ca-certificates \
       rsync \
       openssh-client \
@@ -39,6 +40,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxrandr-dev \
       libxinerama-dev \
       libxcursor-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js -- build-time only, for the pedalboard's Svelte/Vite web UI (the CMake
+# target pedalboard_webui runs `npm ci && npm run build` into pedalboard/web/).
+# The Pi never needs Node: the UI is shipped as static files. Pinned to the
+# NodeSource 20.x LTS line because bookworm's own nodejs (18.x) is below Vite 6's
+# floor. This stays build-time only and never touches the deployed binary.
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Why the X11/freetype dev libs above (even though we build JUCE headless): any
