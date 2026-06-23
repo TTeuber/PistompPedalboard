@@ -1,6 +1,7 @@
-<script>
+<script lang="ts">
   import { api } from './api.js';
   import { board, applyState } from './store.svelte.js';
+  import type { BoardState } from './types.js';
 
   // FS1..FS4 colors -- match the device NeoPixels (kFsColors) and AssignStrip.
   const COLORS = ['#ff453a', '#30d158', '#4d96ff', '#ffcc00'];
@@ -10,9 +11,9 @@
     COLORS.map((_, i) => board.effects.filter((e) => e.fsAssign === i).length),
   );
 
-  async function toggle(i) {
+  async function toggle(i: number) {
     board.footswitches[i] = !board.footswitches[i]; // optimistic; SSE confirms
-    applyState(await api('/api/footswitch', { fs: i }));
+    applyState(await api<BoardState>('/api/footswitch', { fs: i }));
   }
 </script>
 

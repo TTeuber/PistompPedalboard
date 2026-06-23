@@ -1,0 +1,16 @@
+{
+  "extends": "@tsconfig/svelte/tsconfig.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "strict": true,
+    "skipLibCheck": true,
+    // Vite/esbuild only transpiles -- type-checking is svelte-check's job (run
+    // in `npm run build`), so we never emit from tsc.
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.svelte", "src/vite-env.d.ts"]
+}

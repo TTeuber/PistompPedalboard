@@ -1,10 +1,11 @@
-<script>
+<script lang="ts">
   import { api } from './api.js';
   import { applyState } from './store.svelte.js';
+  import type { BoardState, Effect } from './types.js';
   import ParamControl from './ParamControl.svelte';
   import AssignStrip from './AssignStrip.svelte';
 
-  let { fx, inGrid = false } = $props();
+  let { fx, inGrid = false }: { fx: Effect; inGrid?: boolean } = $props();
 
   function togglePower() {
     const on = !fx.enabled;
@@ -14,11 +15,11 @@
 
   // Grid moves/removes return the full new state (the chain re-laid out), so we
   // fold the response straight into the store.
-  async function move(dir) {
-    applyState(await api('/api/fx/move', { slot: fx.slot, dir }));
+  async function move(dir: number) {
+    applyState(await api<BoardState>('/api/fx/move', { slot: fx.slot, dir }));
   }
   async function remove() {
-    applyState(await api('/api/fx/remove', { slot: fx.slot }));
+    applyState(await api<BoardState>('/api/fx/remove', { slot: fx.slot }));
   }
 </script>
 

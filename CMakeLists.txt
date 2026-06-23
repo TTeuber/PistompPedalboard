@@ -50,6 +50,7 @@ if(NPM_EXECUTABLE)
        ${WEBUI_DIR}/index.html
        ${WEBUI_DIR}/vite.config.js
        ${WEBUI_DIR}/svelte.config.js
+       ${WEBUI_DIR}/tsconfig.json
        ${WEBUI_DIR}/package.json)
   add_custom_command(
     OUTPUT ${WEBUI_STAMP}

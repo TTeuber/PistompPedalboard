@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import { onMount } from 'svelte';
   import { api } from './lib/api.js';
   import {
@@ -9,11 +9,12 @@
     pollTelemetry,
     applyState,
   } from './lib/store.svelte.js';
+  import type { BoardState, Effect } from './lib/types.js';
   import Pedal from './lib/Pedal.svelte';
   import EmptySlot from './lib/EmptySlot.svelte';
   import FootswitchBar from './lib/FootswitchBar.svelte';
 
-  let presetNames = $state([]);
+  let presetNames = $state<string[]>([]);
   let presetSel = $state('');
   let saveName = $state('');
 
@@ -21,8 +22,8 @@
   // the one state document -- new effects appear with no UI changes.
   const inputFx = $derived(board.effects.filter((e) => e.section === 'input'));
   const outputFx = $derived(board.effects.filter((e) => e.section === 'output'));
-  const grid = $derived.by(() => {
-    const bySlot = {};
+  const grid = $derived.by<(Effect | null)[]>(() => {
+    const bySlot: Record<number, Effect> = {};
     for (const e of board.effects) if (e.section === 'fx') bySlot[e.slot] = e;
     return Array.from({ length: board.fxSlotCount }, (_, s) => bySlot[s] ?? null);
   });
@@ -32,8 +33,8 @@
 
   async function loadPresetNames() {
     try {
-      presetNames = await api('/api/presets');
-    } catch (_) {
+      presetNames = await api<string[]>('/api/presets');
+    } catch {
       /* ignore */
     }
   }
@@ -49,7 +50,7 @@
     };
   });
 
-  function setMaster(v) {
+  function setMaster(v: number) {
     board.master = v / 100;
     api('/api/master', { value: v / 100 }).catch(console.error);
   }
@@ -59,7 +60,7 @@
   }
   async function loadPreset() {
     if (!presetSel) return;
-    applyState(await api('/api/preset/load', { name: presetSel }));
+    applyState(await api<BoardState>('/api/preset/load', { name: presetSel }));
   }
   async function savePreset() {
     const name = saveName.trim();

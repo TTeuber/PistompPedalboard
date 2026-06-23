@@ -1,8 +1,9 @@
-<script>
+<script lang="ts">
   import { api } from './api.js';
   import { applyState } from './store.svelte.js';
+  import type { BoardState, Effect } from './types.js';
 
-  let { fx } = $props();
+  let { fx }: { fx: Effect } = $props();
 
   // FS1..FS4 -- must match the device palette (kFsColors) and the FootswitchBar:
   // red / green / blue / yellow.
@@ -10,8 +11,8 @@
 
   // Cycle this pedal's binding for one footswitch, exactly like the device's
   // assign page: unassigned (or bound elsewhere) -> normal -> inverted -> clear.
-  async function cycle(i) {
-    let fs, mode;
+  async function cycle(i: number) {
+    let fs: number, mode: number;
     if (fx.fsAssign !== i) {
       fs = i;
       mode = 0;
@@ -22,7 +23,7 @@
       fs = -1;
       mode = 0;
     }
-    applyState(await api('/api/assign', { effect: fx.type, fs, mode }));
+    applyState(await api<BoardState>('/api/assign', { effect: fx.type, fs, mode }));
   }
 </script>
 

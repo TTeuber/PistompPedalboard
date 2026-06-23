@@ -1,12 +1,13 @@
-<script>
+<script lang="ts">
   import { api } from './api.js';
+  import type { Param } from './types.js';
 
-  let { effectType, p } = $props();
+  let { effectType, p }: { effectType: string; p: Param } = $props();
 
   // A couple of params render as something other than a slider, matching the
   // device: a 0..1 unit-less value is an on/off toggle (e.g. Reverb "Freeze");
   // an enumerated value is a dropdown.
-  const ENUMS = { type: ['Overdrive', 'Distortion', 'Fuzz'] };
+  const ENUMS: Record<string, string[]> = { type: ['Overdrive', 'Distortion', 'Fuzz'] };
 
   // Local mirror of the param value. We send this to the device on input, and
   // adopt the device's value when it changes underneath us -- UNLESS the user is
@@ -23,8 +24,8 @@
     if (!editing) value = incoming;
   });
 
-  let timer;
-  function send(v) {
+  let timer: ReturnType<typeof setTimeout>;
+  function send(v: number) {
     value = v;
     clearTimeout(timer);
     timer = setTimeout(
@@ -36,7 +37,7 @@
   const enumOpts = $derived(ENUMS[p.id]);
   const isToggle = $derived(p.min === 0 && p.max === 1 && !p.unit && !enumOpts);
   const step = $derived(p.max - p.min <= 4 ? 0.01 : 1);
-  const fmt = (v) =>
+  const fmt = (v: number) =>
     p.unit === '%' ? `${Math.round(v)}%` : p.unit ? `${v.toFixed(2)} ${p.unit}` : v.toFixed(2);
 </script>
 
