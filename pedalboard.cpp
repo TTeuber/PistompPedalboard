@@ -364,7 +364,7 @@ int main(int argc, char** argv) {
   snd_pcm_prepare(play);
 
   // Optionally start on a default preset (ignored if absent).
-  presets::load(presetDir, "Clean Worship", g_chain, g_ctl);
+  presets::load(presetDir, "Clean Worship", g_chain, g_ctl, g_fx);
 
   // --- LCD + LVGL (UI thread is main; build widgets before going RT) ---
   Ili9341 lcd;

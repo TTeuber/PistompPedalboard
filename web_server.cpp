@@ -212,7 +212,7 @@ void WebServer::setupRoutes() {
     json b;
     if (!parseBody(req, res, b)) return;
     std::string name = b.value("name", std::string{});
-    if (name.empty() || !presets::load(presetDir_, name, chain_, ctl_)) {
+    if (name.empty() || !presets::load(presetDir_, name, chain_, ctl_, factory_)) {
       res.status = 404;
       res.set_content("{\"error\":\"no such preset\"}", "application/json");
       return;

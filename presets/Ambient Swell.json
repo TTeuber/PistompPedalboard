@@ -2,6 +2,13 @@
   "name": "Ambient Swell",
   "master": 1.0,
   "bypassed": false,
+  "fxGrid": [
+    { "kind": "drive",  "id": "drive"  },
+    { "kind": "chorus", "id": "chorus" },
+    { "kind": "delay",  "id": "delay"  },
+    { "kind": "reverb", "id": "reverb" },
+    null, null, null, null
+  ],
   "effects": {
     "tuner":  { "enabled": false, "params": { "mute": 1, "ref": 440 } },
     "gate":   { "enabled": false, "params": { "threshold": -70, "release": 250 } },

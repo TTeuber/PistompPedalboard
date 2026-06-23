@@ -164,7 +164,7 @@ void UiController::select() {
       break;
     case ActLoadPreset:
       if (it.idx >= 0 && it.idx < (int)presetNames_.size())
-        presets::load(presetDir_, presetNames_[it.idx], chain_, ctl_);
+        presets::load(presetDir_, presetNames_[it.idx], chain_, ctl_, factory_);
       break;
     case ActParamBank:
       if (current_) {

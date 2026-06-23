@@ -15,6 +15,7 @@
 
 #include "effect.h"
 
+#include <cctype>
 #include <functional>
 #include <map>
 #include <memory>
@@ -51,7 +52,37 @@ public:
     return fx;
   }
 
+  // Rebuild a saved instance: mint the named kind but force its stored type_id
+  // (so a preset's params/footswitch state reattach by id). Bumps the per-kind
+  // counter past this id's suffix so later picker-created instances can't
+  // collide with restored ones. Used by the preset loader.
+  std::unique_ptr<Effect> createRestored(const std::string& kind,
+                                         const std::string& id) {
+    for (const FxKind& k : kinds_) {
+      if (k.type != kind) continue;
+      auto fx = k.make();
+      if (!fx) return nullptr;
+      if (!id.empty()) fx->set_type_id(id);
+      std::lock_guard<std::mutex> lk(countsMutex_);
+      int& c = counts_[kind];
+      int n = idSuffix(id);
+      if (n > c) c = n;
+      return fx;
+    }
+    return nullptr;
+  }
+
 private:
+  // Trailing instance number of a factory id: "reverb" -> 1, "reverb-2" -> 2.
+  static int idSuffix(const std::string& id) {
+    auto dash = id.rfind('-');
+    if (dash == std::string::npos || dash + 1 >= id.size()) return 1;
+    const std::string tail = id.substr(dash + 1);
+    for (char ch : tail)
+      if (!std::isdigit((unsigned char)ch)) return 1;
+    return std::stoi(tail);
+  }
+
   std::vector<FxKind> kinds_;
   std::map<std::string, int> counts_;   // per-kind instance count, for unique ids
   std::mutex countsMutex_;
