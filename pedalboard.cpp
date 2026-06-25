@@ -61,6 +61,9 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>   // _NSGetExecutablePath (exe_dir on macOS)
+#endif
 
 // ---- audio config ----------------------------------------------------------
 // Device/rate/period/priority now default inside AudioIO (AudioConfig). We keep
@@ -182,10 +185,17 @@ static void input_loop() {
 // of the cwd ssh drops us in).
 static std::filesystem::path exe_dir() {
   char buf[4096];
+#if defined(__APPLE__)
+  // macOS has no /proc; ask dyld for the executable path instead.
+  uint32_t sz = sizeof(buf);
+  if (_NSGetExecutablePath(buf, &sz) != 0) return std::filesystem::current_path();
+  return std::filesystem::weakly_canonical(std::filesystem::path(buf)).parent_path();
+#else
   ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
   if (n <= 0) return std::filesystem::current_path();
   buf[n] = '\0';
   return std::filesystem::path(buf).parent_path();
+#endif
 }
 
 int main(int argc, char** argv) {

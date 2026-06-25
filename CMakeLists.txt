@@ -8,7 +8,11 @@
 # pistomp_hal targets already exist.
 
 find_package(Threads REQUIRED)
-find_library(ASOUND_LIB asound REQUIRED)
+# ALSA only exists on the Pi; on the macOS sim the HAL uses miniaudio/CoreAudio
+# instead, so there's nothing extra to link here.
+if(NOT APPLE)
+  find_library(ASOUND_LIB asound REQUIRED)
+endif()
 
 # --- the live pedal (Pi: ALSA audio + hardware + web) -----------------------
 juce_add_console_app(pedalboard PRODUCT_NAME "pedalboard")
@@ -30,7 +34,7 @@ target_link_libraries(pedalboard PRIVATE
   juce::juce_dsp
   juce::juce_recommended_config_flags
   juce::juce_recommended_warning_flags
-  ${ASOUND_LIB}
+  ${ASOUND_LIB}   # empty on macOS (guarded above)
   Threads::Threads
 )
 
@@ -67,6 +71,21 @@ else()
   message(WARNING
     "npm not found: skipping the pedalboard web UI build. The web/ dir may be "
     "missing or stale until you build webui/ manually (cd webui && npm ci && npm run build).")
+endif()
+
+# --- macOS sim: stage web/ + presets/ next to the artefact binary -----------
+# On the Pi, deploy.sh rsyncs web/ + presets/ alongside the binary; the app
+# resolves them relative to the executable. For the local Mac sim there's no
+# deploy step, so copy them next to the JUCE artefact after the build. (web/ is
+# produced by pedalboard_webui, which pedalboard already depends on.)
+if(APPLE)
+  add_custom_command(TARGET pedalboard POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/web $<TARGET_FILE_DIR:pedalboard>/web
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/presets $<TARGET_FILE_DIR:pedalboard>/presets
+    COMMENT "Staging web/ + presets/ next to the pedalboard binary (macOS sim)"
+    VERBATIM)
 endif()
 
 # --- offline chain benchmark (no hardware/ALSA; builds + runs on the Mac) ----

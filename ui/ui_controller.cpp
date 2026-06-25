@@ -404,7 +404,9 @@ void UiController::tileBinding(lv_obj_t* tile, Effect* fx) {
   int fs = fx->fsAssign.load();
   if (fs < 0 || fs > 3) return;
   const FsColor& c = kFsColors[fs];
-  lv_obj_set_style_bg_color(tile, LV_COLOR_MAKE(c.r / 6, c.g / 6, c.b / 6), 0);
+  lv_obj_set_style_bg_color(
+      tile,
+      LV_COLOR_MAKE((uint8_t)(c.r / 6), (uint8_t)(c.g / 6), (uint8_t)(c.b / 6)), 0);
   lv_obj_t* chip = lv_label_create(tile);
   char b[16];
   snprintf(b, sizeof b, "%s%s", c.name, fx->fsMode.load() == 1 ? " inv" : "");
