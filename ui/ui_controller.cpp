@@ -42,6 +42,13 @@ const FsColor kFsColors[4] = {
   {0xFF, 0xC0, 0x00, "FS4"},   // yellow
 };
 
+// LED status brightness, as a % of full range. The ws2812-pio overlay now runs
+// at full range (brightness=255), so the byte we write IS the brightness -- we
+// pick a comfortable status level here instead of leaning on a global dimmer.
+// ~40% reads as a clear "on", ~20% as a dim "off"; above ~50% is harsh to look at.
+constexpr int kLedOnPct  = 40;
+constexpr int kLedDimPct = 20;
+
 constexpr int kRowY0 = 38, kRowH = 30, kRowStep = 34, kRowW = 300, kRowX = 10;
 
 const char* kNoteNames[12] = {"C",  "C#", "D",  "D#", "E",  "F",
@@ -648,13 +655,18 @@ void UiController::updateLeds(Leds& leds) {
   if (sig == ledSig_) return;
   ledSig_ = sig;
 
+  // Scale each color to the on/off status level (the byte we write is the
+  // actual brightness now). Proportional scaling keeps the hue, so a dimmed
+  // two-channel color like yellow stays yellow instead of dropping a channel.
+  auto lvl = [](uint8_t v, int pct) -> uint8_t { return (uint8_t)(v * pct / 100); };
+
   leds.clear();
   for (int fs = 0; fs < 4; fs++) {
     const FsColor& c = kFsColors[fs];
-    if (ctl_.fsEngaged[fs].load()) leds.set(fs, c.r, c.g, c.b);
-    else                leds.set(fs, c.r / 2, c.g / 2, c.b / 2);   // 50% dim (below ~50% reads as off)
+    int pct = ctl_.fsEngaged[fs].load() ? kLedOnPct : kLedDimPct;
+    leds.set(fs, lvl(c.r, pct), lvl(c.g, pct), lvl(c.b, pct));
   }
-  if (bypassed) leds.set(5, 80, 0, 0);   // spare LED = global bypass indicator
+  if (bypassed) leds.set(5, lvl(0xFF, kLedOnPct), 0, 0);   // spare LED = global bypass indicator
   leds.show();
 }
 

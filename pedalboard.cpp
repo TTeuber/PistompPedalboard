@@ -43,13 +43,12 @@
 #include "footswitch.h"
 #include "gpio_button.h"
 #include "leds.h"
+#include "board.h"
+#include "audio_io.h"
+#include "realtime.h"
 
 #include "lvgl.h"
 
-#include <alsa/asoundlib.h>
-#include <pthread.h>
-#include <sched.h>
-#include <sys/mman.h>
 #include <algorithm>
 #include <atomic>
 #include <cerrno>
@@ -63,39 +62,28 @@
 #include <thread>
 #include <unistd.h>
 
-// ---- audio config (matches nam_amp / nam_passthrough) ----------------------
-static const char* DEVICE = "plughw:CARD=IQaudIOCODEC";
+// ---- audio config ----------------------------------------------------------
+// Device/rate/period/priority now default inside AudioIO (AudioConfig). We keep
+// only what this file still needs directly: the sample rate (for chain.prepare
+// and the DSP-load budget) and the size of the per-channel float work buffers.
 static const unsigned RATE = 48000;
-static const unsigned CHANNELS = 2;
-static const snd_pcm_uframes_t WANT_PERIOD = 64;
-static const snd_pcm_uframes_t WANT_BUFFER = 256;
-static const int RT_PRIORITY = 80;
 static const int MAX_FRAMES = 8192;
 
-// ---- pi-Stomp v3 control mapping (BCM/GPIO; see pistomp/pistomptre.py) ------
-// Four rotary controls: a dedicated NAV encoder + 3 tweak knobs. NAV drives the
-// on-screen cursor; enc1 push = Back; enc1/2/3 turn edit a pedal's params, and
-// enc3 doubles as master/output level everywhere else. All of this is now routed
-// through the UiController via a UiEvent queue -- the input thread never touches
-// LVGL or the chain directly.
-static const int NAV_D = 17,  NAV_CLK = 4;     // navigation encoder rotation
-static const int ENC1_D = 12, ENC1_CLK = 25, ENC1_SW = 16;
-static const int ENC2_D = 24, ENC2_CLK = 23;   // (push GPIO26, unused for now)
-static const int ENC3_D = 22, ENC3_CLK = 27;   // (no push switch on enc3)
-
-// Footswitches FS0..3 ride MCP3008 ch0..3 and map 1:1 to NeoPixels 0..3. A tap
-// toggles the effects bound to it (assignment lives in the UI); holding FS3
-// opens the tuner. FS3 acts on RELEASE so a hold doesn't also fire a tap.
-static const int FS_CHANNEL[4] = {0, 1, 2, 3};
-static const std::chrono::milliseconds FS_TUNER_HOLD{2000};
-
-// Navigation encoder push (MCP3008 ch4, rests high ~1022, pressed ~0): a short
-// press = select, a QUIT_HOLD hold = exit cleanly back to the boot launcher.
-// (Verified on-device; legacy pistomp.py mislabels this as ch7, which on the v3
-// board is actually a knob resting near the threshold.)
-static const int NAV_SW_CHANNEL = 4;
-static const int NAV_SW_THRESHOLD = 512;
-static const std::chrono::milliseconds QUIT_HOLD{2000};
+// ---- pi-Stomp v3 control behaviour -----------------------------------------
+// The WIRING (which GPIO/ADC each control rides, the nav-switch threshold, the
+// ch7-vs-ch4 gotcha) now lives in the HAL: see pistomp-hal/board_v3.h, vended
+// through Board (which also owns the shared SPI0 lock). Only the app-level roles
+// and gesture timings live here. All input is routed through the UiController via
+// the UiEvent queue -- the input thread never touches LVGL or the chain directly.
+//
+// Roles: the NAV encoder drives the on-screen cursor (push = select, hold = quit
+// to the launcher); enc1 push = Back; enc1/2/3 turns edit a pedal's params, and
+// enc3 doubles as master/output level everywhere else. Footswitches FS0..3 map
+// 1:1 to NeoPixels 0..3; a tap toggles the effects bound to it (assignment lives
+// in the UI), and holding FS3 opens the tuner (FS3 acts on RELEASE so a hold
+// doesn't also fire a tap).
+static const std::chrono::milliseconds FS_TUNER_HOLD{2000};   // hold FS3 -> tuner
+static const std::chrono::milliseconds QUIT_HOLD{2000};       // hold NAV -> launcher
 
 static const int WEB_PORT = 8080;
 
@@ -104,94 +92,15 @@ static PedalControls g_ctl;
 static Chain g_chain;
 static FxFactory g_fx;          // mints FX instances for the grid picker
 static EventQueue<64> g_events;  // input thread -> UI thread (lock-free SPSC)
-static std::atomic<const char*> g_fatal{nullptr};
-static std::mutex g_spi_lock;  // SPI0 shared by LCD (0.0) and footswitch ADC (0.1)
+static pistomp::Board g_board;  // owns the SPI0 lock + the v3 control wiring
 
-// Audio buffers at file scope (BSS), prefaulted before going RT.
-static int16_t g_buf[MAX_FRAMES * CHANNELS];
+// Per-channel float work buffers (file scope, prefaulted before RT). The
+// interleaved S16 wire buffer now lives inside AudioIO.
 static float g_L[MAX_FRAMES];
 static float g_R[MAX_FRAMES];
 
-struct AudioCtx { snd_pcm_t* cap; snd_pcm_t* play; snd_pcm_uframes_t period; };
-
 static void on_sigint(int) { g_ctl.running.store(false); }
 
-static int configure(snd_pcm_t* pcm, snd_pcm_uframes_t* period_out,
-                     snd_pcm_uframes_t* buffer_out) {
-  snd_pcm_hw_params_t* hw = nullptr;
-  snd_pcm_hw_params_alloca(&hw);
-  snd_pcm_hw_params_any(pcm, hw);
-  snd_pcm_hw_params_set_access(pcm, hw, SND_PCM_ACCESS_RW_INTERLEAVED);
-  snd_pcm_hw_params_set_format(pcm, hw, SND_PCM_FORMAT_S16_LE);
-  snd_pcm_hw_params_set_channels(pcm, hw, CHANNELS);
-  unsigned rate = RATE;
-  snd_pcm_hw_params_set_rate_near(pcm, hw, &rate, 0);
-  snd_pcm_uframes_t period = WANT_PERIOD;
-  snd_pcm_hw_params_set_period_size_near(pcm, hw, &period, 0);
-  snd_pcm_uframes_t buffer = WANT_BUFFER;
-  snd_pcm_hw_params_set_buffer_size_near(pcm, hw, &buffer);
-  int err = snd_pcm_hw_params(pcm, hw);
-  if (err < 0) return err;
-  snd_pcm_hw_params_get_period_size(hw, &period, 0);
-  snd_pcm_hw_params_get_buffer_size(hw, &buffer);
-  *period_out = period;
-  *buffer_out = buffer;
-  return 0;
-}
-
-// ---------------- THE REAL-TIME AUDIO THREAD ----------------
-// No malloc/printf/locks; chain.process() and every effect obey the same rule.
-static void* audio_thread(void* arg) {
-  AudioCtx* ctx = static_cast<AudioCtx*>(arg);
-  const snd_pcm_uframes_t period = ctx->period;
-  const double budget_s = (double)period / RATE;
-
-  while (g_ctl.running.load(std::memory_order_relaxed)) {
-    snd_pcm_sframes_t got = snd_pcm_readi(ctx->cap, g_buf, period);
-    if (got == -EPIPE) { g_ctl.xruns.fetch_add(1, std::memory_order_relaxed);
-                         snd_pcm_prepare(ctx->cap); continue; }
-    if (got == -EINTR) continue;
-    if (got < 0) { g_fatal.store(snd_strerror((int)got)); g_ctl.running.store(false); break; }
-
-    const float master = g_ctl.masterLevel.load(std::memory_order_relaxed);
-    const bool bypass = g_ctl.bypassed.load(std::memory_order_relaxed);
-
-    // Guitar on Aux-Left -> mono float, fanned to both channels to start stereo.
-    for (int f = 0; f < (int)got; f++) {
-      float x = g_buf[2 * f + 0] / 32768.0f;
-      g_L[f] = x;
-      g_R[f] = x;
-    }
-
-    if (!bypass) {
-      auto t0 = std::chrono::steady_clock::now();
-      g_chain.process(g_L, g_R, (int)got);
-      auto t1 = std::chrono::steady_clock::now();
-      double used = std::chrono::duration<double>(t1 - t0).count();
-      g_ctl.dspPermille.store((unsigned)(1000.0 * used / budget_s),
-                              std::memory_order_relaxed);
-    } else {
-      g_ctl.dspPermille.store(0, std::memory_order_relaxed);
-    }
-
-    // -> S16 stereo, applying master level, with a hard clip guard.
-    for (int f = 0; f < (int)got; f++) {
-      float l = g_L[f] * master, r = g_R[f] * master;
-      int sl = (int)(l * 32768.0f), sr = (int)(r * 32768.0f);
-      if (sl > 32767) sl = 32767; else if (sl < -32768) sl = -32768;
-      if (sr > 32767) sr = 32767; else if (sr < -32768) sr = -32768;
-      g_buf[2 * f + 0] = (int16_t)sl;
-      g_buf[2 * f + 1] = (int16_t)sr;
-    }
-
-    snd_pcm_sframes_t wrote = snd_pcm_writei(ctx->play, g_buf, got);
-    if (wrote == -EPIPE) { g_ctl.xruns.fetch_add(1, std::memory_order_relaxed);
-                           snd_pcm_prepare(ctx->play); continue; }
-    if (wrote == -EINTR) continue;
-    if (wrote < 0) { g_fatal.store(snd_strerror((int)wrote)); g_ctl.running.store(false); break; }
-  }
-  return nullptr;
-}
 
 // ---------------- THE INPUT DOMAIN (~1 kHz) ----------------
 // Reads the encoders/switches and POSTS UiEvents -- it never touches LVGL or the
@@ -201,19 +110,17 @@ static void input_loop() {
   GpioButton enc1Btn;
   Footswitch navSw, fs[4];
   bool fsOk = true;
-  for (int i = 0; i < 4; i++) fsOk &= fs[i].init(FS_CHANNEL[i]);
-  if (!navEnc.init(NAV_D, NAV_CLK, "pb_nav") ||
-      !enc1.init(ENC1_D, ENC1_CLK, "pb_enc1") ||
-      !enc2.init(ENC2_D, ENC2_CLK, "pb_enc2") ||
-      !enc3.init(ENC3_D, ENC3_CLK, "pb_enc3") ||
-      !enc1Btn.init(ENC1_SW, "pb_enc1_sw") ||
-      !navSw.init(NAV_SW_CHANNEL, NAV_SW_THRESHOLD) || !fsOk) {
+  for (int i = 0; i < 4; i++) fsOk &= g_board.openFootswitch(fs[i], i);
+  if (!g_board.openNavEncoder(navEnc, "pb_nav") ||
+      !g_board.openEnc1(enc1, "pb_enc1") ||
+      !g_board.openEnc2(enc2, "pb_enc2") ||
+      !g_board.openEnc3(enc3, "pb_enc3") ||
+      !g_board.openEnc1Button(enc1Btn, "pb_enc1_sw") ||
+      !g_board.openNavSwitch(navSw) || !fsOk) {
     fprintf(stderr, "input init failed (GPIO/SPI in use? run with sudo?)\n");
     g_ctl.running.store(false);
     return;
   }
-  navSw.set_spi_lock(&g_spi_lock);
-  for (int i = 0; i < 4; i++) fs[i].set_spi_lock(&g_spi_lock);
 
   // Nav push: short press = NavSelect, hold = quit. Arm only after a release so
   // the launch press (still held from the menu) can't fire select/quit instantly.
@@ -333,43 +240,22 @@ int main(int argc, char** argv) {
   // Partition prefix/suffix and publish the initial FX order for the audio thread.
   g_chain.finalize();
 
-  // --- ALSA open + configure ---
-  snd_pcm_t* cap = nullptr; snd_pcm_t* play = nullptr;
-  int err = snd_pcm_open(&cap, DEVICE, SND_PCM_STREAM_CAPTURE, 0);
-  if (err < 0) { fprintf(stderr, "open capture: %s\n", snd_strerror(err)); return 1; }
-  err = snd_pcm_open(&play, DEVICE, SND_PCM_STREAM_PLAYBACK, 0);
-  if (err < 0) { fprintf(stderr, "open playback: %s\n", snd_strerror(err)); return 1; }
-
-  snd_pcm_uframes_t cap_p, cap_b, play_p, play_b;
-  if (configure(cap, &cap_p, &cap_b) < 0 || configure(play, &play_p, &play_b) < 0) {
-    fprintf(stderr, "configure failed\n"); return 1;
-  }
-  snd_pcm_uframes_t period = cap_p < play_p ? cap_p : play_p;
-  if ((int)period > MAX_FRAMES) period = MAX_FRAMES;
+  // --- bring up the codec (open/configure + the RT thread live in AudioIO) ---
+  pistomp::AudioIO audio;
+  pistomp::AudioConfig acfg;   // codec defaults: 48 kHz, 2ch, 64/256, prio 80
+  if (!audio.open(acfg)) { fprintf(stderr, "audio open failed: %s\n", audio.lastError()); return 1; }
+  const int period = audio.period();
+  const double budget_s = (double)period / RATE;
 
   // Prepare every effect (sizes buffers, prewarms NAM) BEFORE going RT.
-  g_chain.prepare((double)RATE, (int)period);
-
-  {
-    snd_pcm_sw_params_t* sw = nullptr;
-    snd_pcm_sw_params_alloca(&sw);
-    snd_pcm_sw_params_current(play, sw);
-    snd_pcm_sw_params_set_start_threshold(play, sw, play_b);
-    snd_pcm_sw_params_set_avail_min(play, sw, period);
-    if ((err = snd_pcm_sw_params(play, sw)) < 0) {
-      fprintf(stderr, "sw_params: %s\n", snd_strerror(err)); return 1;
-    }
-  }
-  snd_pcm_prepare(cap);
-  snd_pcm_prepare(play);
+  g_chain.prepare((double)RATE, period);
 
   // Optionally start on a default preset (ignored if absent).
   presets::load(presetDir, "Clean Worship", g_chain, g_ctl, g_fx);
 
   // --- LCD + LVGL (UI thread is main; build widgets before going RT) ---
   Ili9341 lcd;
-  if (!lcd.init(/*rotation=*/1)) { fprintf(stderr, "LCD init failed\n"); return 1; }
-  lcd.set_spi_lock(&g_spi_lock);
+  if (!g_board.openLcd(lcd, /*rotation=*/1)) { fprintf(stderr, "LCD init failed\n"); return 1; }
   lvgl_display::init(lcd);
   UiController ui(g_chain, g_ctl, g_fx, tuner, ampName, presetDir);
   ui.begin();
@@ -379,9 +265,8 @@ int main(int argc, char** argv) {
   bool haveLeds = leds.init();
   if (!haveLeds) fprintf(stderr, "LEDs unavailable (run with sudo for /dev/leds0)\n");
 
-  if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0)
-    fprintf(stderr, "warning: mlockall failed (%s) -- raise memlock limit\n", strerror(errno));
-  memset(g_buf, 0, sizeof(g_buf));
+  if (!pistomp::realtime::lock_all_memory())
+    fprintf(stderr, "warning: mlockall failed -- raise memlock limit\n");
   memset(g_L, 0, sizeof(g_L));
   memset(g_R, 0, sizeof(g_R));
 
@@ -391,39 +276,48 @@ int main(int argc, char** argv) {
     printf("Web UI: http://<pi-ip>:%d/  (serving %s)\n", WEB_PORT, webDir.c_str());
 
   // Block SIGINT before any worker thread so only main handles Ctrl-C.
-  sigset_t sigint_set;
-  sigemptyset(&sigint_set);
-  sigaddset(&sigint_set, SIGINT);
-  pthread_sigmask(SIG_BLOCK, &sigint_set, nullptr);
+  pistomp::realtime::block_signal(SIGINT);
 
-  // --- spawn the RT audio thread ---
-  AudioCtx ctx{cap, play, period};
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
-  pthread_attr_setschedpolicy(&attr, SCHED_FIFO);
-  struct sched_param sp; sp.sched_priority = RT_PRIORITY;
-  pthread_attr_setschedparam(&attr, &sp);
-  pthread_t tid;
-  int rc = pthread_create(&tid, &attr, audio_thread, &ctx);
-  pthread_attr_destroy(&attr);
-  if (rc != 0) {
-    fprintf(stderr, "pthread_create RT failed: %s\n", strerror(rc));
-    fprintf(stderr, "  (need rtprio: audio.conf + `audio` group + re-login, or run with sudo)\n");
+  // --- spawn the RT audio thread: the DSP IS this callback. in[0] is the guitar
+  // (Aux-Left), already S16->float; fan it to stereo, run the effects chain
+  // (unless bypassed), apply master level. out[] is clamped to S16 by AudioIO. ---
+  bool audioOk = audio.start([budget_s](const float* const* in, float* const* out, int n) {
+    const float master = g_ctl.masterLevel.load(std::memory_order_relaxed);
+    const bool bypass = g_ctl.bypassed.load(std::memory_order_relaxed);
+
+    for (int f = 0; f < n; f++) { g_L[f] = in[0][f]; g_R[f] = in[0][f]; }
+
+    if (!bypass) {
+      auto t0 = std::chrono::steady_clock::now();
+      g_chain.process(g_L, g_R, n);
+      auto t1 = std::chrono::steady_clock::now();
+      g_ctl.dspPermille.store(
+          (unsigned)(1000.0 * std::chrono::duration<double>(t1 - t0).count() / budget_s),
+          std::memory_order_relaxed);
+    } else {
+      g_ctl.dspPermille.store(0, std::memory_order_relaxed);
+    }
+
+    for (int f = 0; f < n; f++) { out[0][f] = g_L[f] * master; out[1][f] = g_R[f] * master; }
+  });
+  if (!audioOk) {
+    fprintf(stderr, "audio start failed: %s\n", audio.lastError());
+    fprintf(stderr, "  (need rtprio: run with sudo, or audio group + audio.conf)\n");
     return 1;
   }
 
   std::thread input(input_loop);
-  pthread_sigmask(SIG_UNBLOCK, &sigint_set, nullptr);
+  pistomp::realtime::unblock_signal(SIGINT);
   signal(SIGINT, on_sigint);
 
-  printf("Pedalboard live: period=%lu, ~%.1f ms each-way, prio=%d. "
+  printf("Pedalboard live: period=%d, prio=%d. "
          "Nav encoder=navigate, enc1=back, enc3=master. Ctrl-C to stop.\n",
-         (unsigned long)period, 1000.0 * play_b / RATE, RT_PRIORITY);
+         period, acfg.rtPriority);
 
   // --- UI / LED loop (~50 Hz) ---
-  while (g_ctl.running.load()) {
+  while (g_ctl.running.load() && audio.running()) {
     lv_timer_handler();
+    g_ctl.xruns.store(audio.xruns(), std::memory_order_relaxed);  // bridge to web telemetry
     tuner->analyze();  // non-RT pitch detection (no-op while disengaged)
     UiEvent ev;
     while (g_events.pop(ev)) ui.handle(ev);   // drain input -> navigate/edit
@@ -435,15 +329,12 @@ int main(int argc, char** argv) {
   // --- clean shutdown ---
   web.stop();
   input.join();
-  pthread_join(tid, nullptr);
-  if (const char* f = g_fatal.load()) fprintf(stderr, "audio thread fatal: %s\n", f);
+  audio.stop();                 // joins the RT thread; drain + close on destruct
+  if (const char* f = audio.fatalError()) fprintf(stderr, "audio thread fatal: %s\n", f);
 
-  snd_pcm_drain(play);
-  snd_pcm_close(play);
-  snd_pcm_close(cap);
   if (haveLeds) leds.close();
   lcd.fill(0x0000);
   lcd.close();
-  printf("\nStopped. total xruns: %u\n", g_ctl.xruns.load());
+  printf("\nStopped. total xruns: %u\n", audio.xruns());
   return 0;
 }
