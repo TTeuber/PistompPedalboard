@@ -30,5 +30,11 @@ struct PedalControls {
   std::atomic<unsigned> dspPermille{0};   // chain process() time / period * 1000
   std::atomic<unsigned> xruns{0};
 
+  // Input level peak-hold per channel (0 = L/input1, 1 = R/input2), |sample| in
+  // [0,1]. Written by the audio thread (running max), read-and-cleared by the UI
+  // thread to drive the input-level meter LEDs in the simulator (where there's no
+  // analog ADC detector). See pedalboard/input_vu.h.
+  std::atomic<float> inPeak[2]{};
+
   std::atomic<bool> running{true};        // false = every domain shuts down
 };

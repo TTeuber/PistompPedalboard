@@ -45,9 +45,11 @@
 #include "leds.h"
 #include "board.h"
 #include "audio_io.h"
+#include "sim_menu.h"
 #include "realtime.h"
 
 #include "lvgl.h"
+#include <json.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -58,18 +60,21 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>   // _NSGetExecutablePath (exe_dir on macOS)
 #endif
 
 // ---- audio config ----------------------------------------------------------
-// Device/rate/period/priority now default inside AudioIO (AudioConfig). We keep
-// only what this file still needs directly: the sample rate (for chain.prepare
-// and the DSP-load budget) and the size of the per-channel float work buffers.
-static const unsigned RATE = 48000;
+// Device/rate/period/priority now default inside AudioIO (AudioConfig). The
+// sample rate and block size are runtime values (the macOS settings window can
+// change them live, see the Settings… menu), so the chain.prepare()/DSP-load
+// budget read them off the live AudioConfig rather than a compile-time constant.
+// MAX_FRAMES bounds the per-channel float work buffers regardless of block size.
 static const int MAX_FRAMES = 8192;
 
 // ---- pi-Stomp v3 control behaviour -----------------------------------------
@@ -198,6 +203,76 @@ static std::filesystem::path exe_dir() {
 #endif
 }
 
+// The RT DSP callback, parameterised by the per-block time budget (period/rate)
+// so it can be rebuilt when the macOS settings window changes rate or block
+// size. Captures only file-scope state (g_ctl/g_chain/g_L/g_R), so it stays
+// allocation- and lock-free on the audio thread. in[0] is the mono guitar; fan
+// it to stereo, run the chain unless bypassed, apply master, clamp downstream.
+static pistomp::AudioCallback makeAudioCallback(double budget_s) {
+  return [budget_s](const float* const* in, float* const* out, int n) {
+    const float master = g_ctl.masterLevel.load(std::memory_order_relaxed);
+    const bool bypass = g_ctl.bypassed.load(std::memory_order_relaxed);
+
+    for (int f = 0; f < n; f++) { g_L[f] = in[0][f]; g_R[f] = in[0][f]; }
+
+    // Input level peak-hold for the meter LEDs, both audio inputs. On hardware the
+    // meters read a pre-gain analog detector (ADC ch6/7); this digital peak is the
+    // simulator's level source. UI thread reads-and-clears each slot.
+    float pk[2] = {0.0f, 0.0f};
+    for (int f = 0; f < n; f++) {
+      float a0 = in[0][f]; if (a0 < 0) a0 = -a0; if (a0 > pk[0]) pk[0] = a0;
+      float a1 = in[1][f]; if (a1 < 0) a1 = -a1; if (a1 > pk[1]) pk[1] = a1;
+    }
+    for (int c = 0; c < 2; c++) {
+      float cur = g_ctl.inPeak[c].load(std::memory_order_relaxed);
+      while (pk[c] > cur &&
+             !g_ctl.inPeak[c].compare_exchange_weak(cur, pk[c], std::memory_order_relaxed)) {}
+    }
+
+    if (!bypass) {
+      auto t0 = std::chrono::steady_clock::now();
+      g_chain.process(g_L, g_R, n);
+      auto t1 = std::chrono::steady_clock::now();
+      g_ctl.dspPermille.store(
+          (unsigned)(1000.0 * std::chrono::duration<double>(t1 - t0).count() / budget_s),
+          std::memory_order_relaxed);
+    } else {
+      g_ctl.dspPermille.store(0, std::memory_order_relaxed);
+    }
+
+    for (int f = 0; f < n; f++) { out[0][f] = g_L[f] * master; out[1][f] = g_R[f] * master; }
+  };
+}
+
+// --- audio settings persistence (macOS simulator) ---------------------------
+// The Settings… window's device/rate/buffer choice is remembered in a small
+// JSON file next to the executable, so it survives relaunch. Empty device names
+// mean "follow the system default". Unknown/unplugged devices fall back to the
+// default inside AudioIO, so a stale file never blocks startup.
+static std::filesystem::path audioCfgPath(const std::filesystem::path& base) {
+  return base / "audio_settings.json";
+}
+static void loadAudioSettings(const std::filesystem::path& p, pistomp::AudioConfig& cfg) {
+  std::ifstream f(p);
+  if (!f) return;
+  try {
+    nlohmann::json doc; f >> doc;
+    cfg.captureName  = doc.value("input",  std::string{});
+    cfg.playbackName = doc.value("output", std::string{});
+    cfg.rate         = doc.value("rate",   cfg.rate);
+    cfg.wantPeriod   = doc.value("buffer", cfg.wantPeriod);
+  } catch (const std::exception&) { /* corrupt file -> keep defaults */ }
+}
+static void saveAudioSettings(const std::filesystem::path& p, const pistomp::AudioConfig& cfg) {
+  nlohmann::json doc;
+  doc["input"]  = cfg.captureName;
+  doc["output"] = cfg.playbackName;
+  doc["rate"]   = cfg.rate;
+  doc["buffer"] = cfg.wantPeriod;
+  std::ofstream f(p);
+  if (f) f << doc.dump(2) << '\n';
+}
+
 int main(int argc, char** argv) {
   std::string modelPath =
       "SuperReverbNAM/Fender Super Reverb_ EQ Flat, Volume 3, sm57.nam";
@@ -253,12 +328,14 @@ int main(int argc, char** argv) {
   // --- bring up the codec (open/configure + the RT thread live in AudioIO) ---
   pistomp::AudioIO audio;
   pistomp::AudioConfig acfg;   // codec defaults: 48 kHz, 2ch, 64/256, prio 80
+  // On the Mac, restore the last device/rate/buffer chosen in Settings… (no-op
+  // if the file is absent; ignored fields on the Pi codec path).
+  loadAudioSettings(audioCfgPath(base), acfg);
   if (!audio.open(acfg)) { fprintf(stderr, "audio open failed: %s\n", audio.lastError()); return 1; }
-  const int period = audio.period();
-  const double budget_s = (double)period / RATE;
+  int period = audio.period();
 
   // Prepare every effect (sizes buffers, prewarms NAM) BEFORE going RT.
-  g_chain.prepare((double)RATE, period);
+  g_chain.prepare((double)acfg.rate, period);
 
   // Optionally start on a default preset (ignored if absent).
   presets::load(presetDir, "Clean Worship", g_chain, g_ctl, g_fx);
@@ -275,6 +352,12 @@ int main(int argc, char** argv) {
   bool haveLeds = leds.init();
   if (!haveLeds) fprintf(stderr, "LEDs unavailable (run with sudo for /dev/leds0)\n");
 
+  // --- analog input-level detectors (ADC ch6/7) for the meter LEDs. Absent in
+  // the sim (available()==false) -> the UI falls back to the digital audio peak. ---
+  pistomp::InputLevel inputLevel;
+  g_board.openInputLevel(inputLevel);
+  ui.setInputLevel(&inputLevel);
+
   if (!pistomp::realtime::lock_all_memory())
     fprintf(stderr, "warning: mlockall failed -- raise memlock limit\n");
   memset(g_L, 0, sizeof(g_L));
@@ -288,28 +371,10 @@ int main(int argc, char** argv) {
   // Block SIGINT before any worker thread so only main handles Ctrl-C.
   pistomp::realtime::block_signal(SIGINT);
 
-  // --- spawn the RT audio thread: the DSP IS this callback. in[0] is the guitar
-  // (Aux-Left), already S16->float; fan it to stereo, run the effects chain
-  // (unless bypassed), apply master level. out[] is clamped to S16 by AudioIO. ---
-  bool audioOk = audio.start([budget_s](const float* const* in, float* const* out, int n) {
-    const float master = g_ctl.masterLevel.load(std::memory_order_relaxed);
-    const bool bypass = g_ctl.bypassed.load(std::memory_order_relaxed);
-
-    for (int f = 0; f < n; f++) { g_L[f] = in[0][f]; g_R[f] = in[0][f]; }
-
-    if (!bypass) {
-      auto t0 = std::chrono::steady_clock::now();
-      g_chain.process(g_L, g_R, n);
-      auto t1 = std::chrono::steady_clock::now();
-      g_ctl.dspPermille.store(
-          (unsigned)(1000.0 * std::chrono::duration<double>(t1 - t0).count() / budget_s),
-          std::memory_order_relaxed);
-    } else {
-      g_ctl.dspPermille.store(0, std::memory_order_relaxed);
-    }
-
-    for (int f = 0; f < n; f++) { out[0][f] = g_L[f] * master; out[1][f] = g_R[f] * master; }
-  });
+  // --- spawn the RT audio thread: the DSP IS makeAudioCallback's lambda. in[0]
+  // is the guitar (Aux-Left); it fans to stereo, runs the chain unless bypassed,
+  // applies master. The budget (period/rate) feeds the DSP-load meter. ---
+  bool audioOk = audio.start(makeAudioCallback((double)period / acfg.rate));
   if (!audioOk) {
     fprintf(stderr, "audio start failed: %s\n", audio.lastError());
     fprintf(stderr, "  (need rtprio: run with sudo, or audio group + audio.conf)\n");
@@ -323,6 +388,56 @@ int main(int argc, char** argv) {
   printf("Pedalboard live: period=%d, prio=%d. "
          "Nav encoder=navigate, enc1=back, enc3=master. Ctrl-C to stop.\n",
          period, acfg.rtPriority);
+
+  // --- macOS Settings… menu: pick input/output device, rate, buffer size, live.
+  // No-op on the Pi (settings_menu_stub). The model's getters read the current
+  // AudioIO state; apply() switches devices/format without dropping the app:
+  // stop -> reopen -> re-prepare the chain for the new block -> restart, then
+  // persist. On failure it reverts to the previous config so audio stays up
+  // (the loop's audio.running() guard would otherwise exit the app). All of this
+  // runs on the main thread, nested in the SDL/Cocoa event pump. ---
+  {
+    auto names = [](const std::vector<pistomp::AudioDeviceInfo>& ds) {
+      std::vector<std::string> v; v.reserve(ds.size());
+      for (const auto& d : ds) v.push_back(d.name);
+      return v;
+    };
+    auto defaultName = [](const std::vector<pistomp::AudioDeviceInfo>& ds) {
+      for (const auto& d : ds) if (d.isDefault) return d.name;
+      return std::string{};
+    };
+    sim_menu::Model m;
+    m.inputs   = [&]{ return names(audio.captureDevices()); };
+    m.outputs  = [&]{ return names(audio.playbackDevices()); };
+    m.rates    = []{ return std::vector<int>{44100, 48000, 96000}; };
+    m.buffers  = []{ return std::vector<int>{32, 64, 128, 256, 512}; };
+    // Empty stored name = follow the system default; show that device selected.
+    m.currentInput   = [&]{ return acfg.captureName.empty()
+                                   ? defaultName(audio.captureDevices()) : acfg.captureName; };
+    m.currentOutput  = [&]{ return acfg.playbackName.empty()
+                                   ? defaultName(audio.playbackDevices()) : acfg.playbackName; };
+    m.currentRate    = [&]{ return (int)acfg.rate; };
+    m.currentBuffer  = [&]{ return (int)acfg.wantPeriod; };
+    m.apply = [&](const std::string& in, const std::string& out,
+                  int rate, int buffer) -> bool {
+      auto bringUp = [&](const pistomp::AudioConfig& c) -> bool {
+        if (!audio.reopen(c)) return false;
+        int p = audio.period();
+        g_chain.prepare((double)c.rate, p);
+        return audio.start(makeAudioCallback((double)p / c.rate));
+      };
+      pistomp::AudioConfig prev = acfg;
+      audio.stop();
+      acfg.captureName = in; acfg.playbackName = out;
+      acfg.rate = (unsigned)rate; acfg.wantPeriod = (unsigned)buffer;
+      if (bringUp(acfg)) { saveAudioSettings(audioCfgPath(base), acfg); return true; }
+      fprintf(stderr, "audio switch failed (%s); reverting\n", audio.lastError());
+      acfg = prev;
+      bringUp(acfg);   // best-effort restore so the app keeps running
+      return false;
+    };
+    sim_menu::install(m);
+  }
 
   // --- UI / LED loop (~50 Hz) ---
   while (g_ctl.running.load() && audio.running()) {
@@ -343,6 +458,7 @@ int main(int argc, char** argv) {
   if (const char* f = audio.fatalError()) fprintf(stderr, "audio thread fatal: %s\n", f);
 
   if (haveLeds) leds.close();
+  inputLevel.close();
   lcd.fill(0x0000);
   lcd.close();
   printf("\nStopped. total xruns: %u\n", audio.xruns());

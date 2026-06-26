@@ -11,6 +11,7 @@
 #include "../effects/tuner.h"
 
 #include "leds.h"
+#include "input_level.h"
 
 #include <algorithm>
 #include <cmath>
@@ -645,15 +646,38 @@ void UiController::cycleAssign(Effect* fx, int fs) {
 }
 
 // Light NeoPixels 0..3 in each footswitch's color -- always lit so the colors
-// stay readable: bright when that switch is engaged, dim when off. LED 5 mirrors
-// the global bypass (red). Only pushes a frame when something changed, so the
-// LCD and footswitch ADC don't fight over the SPI bus every tick.
+// stay readable: bright when that switch is engaged, dim when off. The two top
+// LEDs are input-level meters (green/orange/red): LED 5 = input 1 (L), LED 4 =
+// input 2 (R), reading the analog detector on hardware or the digital audio peak
+// in the sim. Only pushes a frame when something changed, so the LCD and ADC
+// don't fight over the SPI bus every tick.
 void UiController::updateLeds(Leds& leds) {
-  bool bypassed = ctl_.bypassed.load();
+  // Advance both input meters every tick (the averaging windows need it), whether
+  // or not we end up pushing a frame.
+  const bool useAdc = inputLevel_ && inputLevel_->available();
+  VuState vs[2];
+  for (int i = 0; i < 2; i++) {
+    float amp;
+    VuThresholds th;
+    if (useAdc) {
+      int raw = inputLevel_->read(i);
+      if (raw < 0) raw = 512;                          // read error -> treat as silent
+      amp = std::fabs(512.0f - (float)raw) + 512.0f;   // rectify about baseline (analogVU)
+      th = adcThresholds();                            // TODO: bias by ALSA capture volume
+    } else {
+      amp = ctl_.inPeak[i].exchange(0.0f, std::memory_order_relaxed);  // read-and-clear peak-hold
+      th = digitalThresholds();
+    }
+    vs[i] = vu_[i].update(amp, th);
+  }
 
-  uint32_t sig = bypassed ? (1u << 4) : 0u;
+  // Change-detector: footswitch states (bits 0..3) + the two meter states (2 bits
+  // each at bits 4..7).
+  uint32_t sig = 0;
   for (int fs = 0; fs < 4; fs++)
     if (ctl_.fsEngaged[fs].load()) sig |= 1u << fs;
+  sig |= (uint32_t)vs[0] << 4;
+  sig |= (uint32_t)vs[1] << 6;
   if (sig == ledSig_) return;
   ledSig_ = sig;
 
@@ -668,7 +692,10 @@ void UiController::updateLeds(Leds& leds) {
     int pct = ctl_.fsEngaged[fs].load() ? kLedOnPct : kLedDimPct;
     leds.set(fs, lvl(c.r, pct), lvl(c.g, pct), lvl(c.b, pct));
   }
-  if (bypassed) leds.set(5, lvl(0xFF, kLedOnPct), 0, 0);   // spare LED = global bypass indicator
+  // Input-level meters (already brightness-scaled inside VuMeter::color).
+  uint8_t r, g, b;
+  VuMeter::color(vs[0], r, g, b); leds.set(5, r, g, b);   // input 1 / L
+  VuMeter::color(vs[1], r, g, b); leds.set(4, r, g, b);   // input 2 / R
   leds.show();
 }
 

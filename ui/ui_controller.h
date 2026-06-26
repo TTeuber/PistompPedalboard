@@ -17,6 +17,7 @@
 #pragma once
 
 #include "../ui_events.h"
+#include "../input_vu.h"
 
 #include "lvgl.h"
 
@@ -30,6 +31,7 @@ class Leds;
 struct PedalControls;
 class Effect;
 namespace fx { class Tuner; }
+namespace pistomp { class InputLevel; }
 
 class UiController {
 public:
@@ -39,7 +41,12 @@ public:
   void begin();                   // build the initial (Home) page
   void handle(const UiEvent& e);  // act on one input event
   void refresh();                 // per-frame: live values + tuner takeover
-  void updateLeds(Leds& leds);    // per-frame: footswitch LED colors (UI thread)
+  void updateLeds(Leds& leds);    // per-frame: footswitch + input-meter LEDs (UI thread)
+
+  // Optional: the analog input-level detectors. When present and available()
+  // (hardware) the meter LEDs read it; otherwise they fall back to the digital
+  // audio peak in PedalControls::inPeak (simulator).
+  void setInputLevel(pistomp::InputLevel* lvl) { inputLevel_ = lvl; }
 
 private:
   enum Page { Home, InputList, FxGrid, FxPicker, AssignPage, OutputList,
@@ -96,6 +103,8 @@ private:
   PedalControls& ctl_;
   FxFactory& factory_;
   fx::Tuner* tuner_;
+  pistomp::InputLevel* inputLevel_ = nullptr;   // analog level source (null/absent in sim)
+  VuMeter vu_[2];                                // input-level meters: [0]=in1/L, [1]=in2/R
   std::string ampName_;
   std::string presetDir_;
 
