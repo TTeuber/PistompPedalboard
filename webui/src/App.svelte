@@ -7,22 +7,22 @@
     refresh,
     connectLive,
     pollTelemetry,
-    applyState,
   } from './lib/store.svelte.js';
-  import type { BoardState, Effect } from './lib/types.js';
+  import type { Effect } from './lib/types.js';
   import Pedal from './lib/Pedal.svelte';
   import EmptySlot from './lib/EmptySlot.svelte';
   import FootswitchBar from './lib/FootswitchBar.svelte';
-  import Setlists from './lib/Setlists.svelte';
+  import Sidebar from './lib/Sidebar.svelte';
+  import TunerButton from './lib/TunerButton.svelte';
+  import TunerModal from './lib/TunerModal.svelte';
+  import SetlistEditor from './lib/SetlistEditor.svelte';
   import Experiments from './lib/Experiments.svelte';
+
+  let tunerOpen = $state(false);
 
   // Tiny hash router: #experiments swaps in the component sandbox, no library.
   const routeOf = () => location.hash.replace(/^#\/?/, '');
   let route = $state(routeOf());
-
-  let rigNames = $state<string[]>([]);
-  let rigSel = $state('');
-  let saveName = $state('');
 
   // The board mirrors the device's Input / FX / Output layout, all derived from
   // the one state document -- new effects appear with no UI changes.
@@ -37,17 +37,8 @@
   const masterPct = $derived(Math.round(board.master * 100));
   const telem = $derived(`DSP ${(status.dspPermille / 10).toFixed(1)}%  ·  xruns ${status.xruns}`);
 
-  async function loadRigNames() {
-    try {
-      rigNames = await api<string[]>('/api/rigs');
-    } catch {
-      /* ignore */
-    }
-  }
-
   onMount(() => {
     refresh().catch(console.error);
-    loadRigNames();
     const es = connectLive();
     const t = setInterval(pollTelemetry, 1000);
     const onHash = () => (route = routeOf());
@@ -67,110 +58,99 @@
     board.bypassed = !board.bypassed;
     api('/api/bypass', { bypassed: board.bypassed }).catch(console.error);
   }
-  async function loadRig() {
-    if (!rigSel) return;
-    applyState(await api<BoardState>('/api/rig/load', { name: rigSel }));
-  }
-  async function saveRig() {
-    const name = saveName.trim();
-    if (!name) return;
-    await api('/api/rig/save', { name });
-    saveName = '';
-    loadRigNames();
-  }
 </script>
 
 {#if route === 'experiments'}
   <Experiments />
+{:else if route === 'setlists'}
+  <SetlistEditor />
 {:else}
-<header>
-  <div class="brand">
-    <span class="dot" class:offline={!status.live} title={status.live ? 'Live' : 'Reconnecting…'}
-    ></span>
-    <h1>pi-Stomp <em>Worship Pedalboard</em></h1>
+<div class="app">
+  <header>
+    <div class="brand">
+      <span class="dot" class:offline={!status.live} title={status.live ? 'Live' : 'Reconnecting…'}
+      ></span>
+      <h1>pi-Stomp <em>Worship Pedalboard</em></h1>
+    </div>
+
+    <div class="globals">
+      <span class="telemetry">{telem}</span>
+      <TunerButton active={tunerOpen} onclick={() => (tunerOpen = true)} />
+      <a class="lab" href="#experiments" title="Component sandbox">Lab</a>
+      <button class="bypass" class:active={board.bypassed} onclick={toggleBypass}>Bypass</button>
+      <label class="master">
+        Master <output>{masterPct}%</output>
+        <input
+          type="range"
+          min="0"
+          max="200"
+          step="1"
+          value={masterPct}
+          oninput={(e) => setMaster(+e.currentTarget.value)}
+        />
+      </label>
+    </div>
+  </header>
+
+  <div class="shell">
+    <Sidebar />
+
+    <main class="board">
+      <section class="lane">
+        <h2 class="lane-title">Input</h2>
+        <div class="lane-body">
+          {#each inputFx as fx (fx.type)}
+            <Pedal {fx} />
+          {/each}
+        </div>
+      </section>
+
+      <section class="lane lane-fx">
+        <h2 class="lane-title">FX <span class="lane-sub">tap a footswitch · ◀ ▶ to move</span></h2>
+        <FootswitchBar />
+        <div class="fx-grid">
+          {#each grid as fx, slot (fx ? fx.type : `empty-${slot}`)}
+            {#if fx}
+              <Pedal {fx} inGrid />
+            {:else}
+              <EmptySlot {slot} />
+            {/if}
+          {/each}
+        </div>
+      </section>
+
+      <section class="lane">
+        <h2 class="lane-title">Output</h2>
+        <div class="lane-body">
+          {#each outputFx as fx (fx.type)}
+            <Pedal {fx} />
+          {/each}
+        </div>
+      </section>
+    </main>
   </div>
-  <div class="globals">
-    <a class="lab" href="#experiments" title="Component sandbox">Lab</a>
-    <button class="bypass" class:active={board.bypassed} onclick={toggleBypass}>Bypass</button>
-    <label class="master">
-      Master <output>{masterPct}%</output>
-      <input
-        type="range"
-        min="0"
-        max="200"
-        step="1"
-        value={masterPct}
-        oninput={(e) => setMaster(+e.currentTarget.value)}
-      />
-    </label>
-  </div>
-</header>
+</div>
 
-<section class="toolbar">
-  <label>
-    <span class="title">Rig</span>
-    <select bind:value={rigSel}>
-      <option value="">—</option>
-      {#each rigNames as n}
-        <option value={n}>{n}</option>
-      {/each}
-    </select>
-  </label>
-  <button onclick={loadRig}>Load</button>
-  <input type="text" placeholder="save as…" bind:value={saveName} />
-  <button onclick={saveRig}>Save</button>
-  <span class="telemetry">{telem}</span>
-</section>
-
-<Setlists />
-
-<main class="board">
-  <section class="lane">
-    <h2 class="lane-title">Input</h2>
-    <div class="lane-body">
-      {#each inputFx as fx (fx.type)}
-        <Pedal {fx} />
-      {/each}
-    </div>
-  </section>
-
-  <section class="lane lane-fx">
-    <h2 class="lane-title">FX <span class="lane-sub">tap a footswitch · ◀ ▶ to move</span></h2>
-    <FootswitchBar />
-    <div class="fx-grid">
-      {#each grid as fx, slot (fx ? fx.type : `empty-${slot}`)}
-        {#if fx}
-          <Pedal {fx} inGrid />
-        {:else}
-          <EmptySlot {slot} />
-        {/if}
-      {/each}
-    </div>
-  </section>
-
-  <section class="lane">
-    <h2 class="lane-title">Output</h2>
-    <div class="lane-body">
-      {#each outputFx as fx (fx.type)}
-        <Pedal {fx} />
-      {/each}
-    </div>
-  </section>
-</main>
+{#if tunerOpen}
+  <TunerModal onclose={() => (tunerOpen = false)} />
+{/if}
 {/if}
 
 <style>
+  /* App shell: fixed-height top bar, then a row that fills the viewport — the
+     sidebar and board scroll independently, the page itself never scrolls. */
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
   header {
+    flex: 0 0 auto;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
     gap: var(--sp-4);
-    padding: var(--sp-5) var(--sp-6);
+    padding: var(--sp-4) var(--sp-6);
     border-bottom: 1px solid var(--line);
     background: linear-gradient(180deg, var(--panel), var(--bg));
-    position: sticky;
-    top: 0;
     z-index: 5;
   }
   .brand { display: flex; align-items: center; gap: var(--sp-3); }
@@ -187,6 +167,7 @@
   .dot.offline { background: var(--muted); box-shadow: none; }
 
   .globals { display: flex; align-items: center; gap: var(--sp-5); }
+  .telemetry { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); color: var(--muted); }
   .lab {
     color: var(--muted);
     text-decoration: none;
@@ -214,34 +195,10 @@
   }
   .bypass.active { background: var(--danger); border-color: var(--danger); color: #fff; }
 
-  .toolbar {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-4);
-    flex-wrap: wrap;
-    padding: var(--sp-4) var(--sp-6);
-    border-bottom: 1px solid var(--line);
-    color: var(--muted);
-  }
-  .toolbar label { display: flex; align-items: center; gap: var(--sp-2); }
-  .toolbar select,
-  .toolbar input,
-  .toolbar button {
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    padding: 7px var(--sp-4);
-    font: inherit;
-  }
-  .toolbar button { cursor: pointer; }
-  .toolbar button:hover { border-color: var(--accent); }
-  .toolbar .title { font-weight: 600; letter-spacing: var(--track); color: var(--text); }
-  .telemetry { margin-left: auto; font-variant-numeric: tabular-nums; font-size: var(--fs-sm); }
+  /* The body row: sidebar (own width/scroll) + board (fills, scrolls). */
+  .shell { flex: 1 1 auto; display: flex; min-height: 0; }
 
-  /* Lanes stack vertically (Input over FX over Output), each full width so the
-     pedals + preset rows get room; within a lane pedals flow and wrap. */
-  .board { display: flex; flex-direction: column; gap: var(--sp-5); padding: var(--sp-6); }
+  .board { flex: 1 1 auto; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-5); padding: var(--sp-6); }
   .lane {
     background: var(--panel);
     border: 1px solid var(--line);

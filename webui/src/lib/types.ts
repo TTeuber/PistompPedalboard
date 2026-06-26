@@ -45,6 +45,15 @@ export interface Telemetry {
   xruns: number;
 }
 
+// GET /api/tuner -- live pitch readout, polled while the tuner modal is open.
+export interface TunerReading {
+  engaged: boolean;
+  note: number; // 0..11 (C..B), -1 = no confident pitch
+  octave: number;
+  cents: number; // signed distance to the nearest semitone, ~-50..+50
+  freq: number; // Hz, 0 when no pitch
+}
+
 // GET /api/pedal-presets?effect=<type_id> -- the knob-snapshot names available
 // for a pedal's KIND (so "drive" and "drive-2" share one list).
 export interface PedalPresetList {

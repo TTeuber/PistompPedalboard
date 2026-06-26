@@ -11,6 +11,7 @@
 #include "rigs.h"
 #include "presets.h"
 #include "setlists.h"
+#include "effects/tuner.h"
 
 #include <httplib.h>
 #include <json.hpp>
@@ -128,6 +129,17 @@ void WebServer::setupRoutes() {
     json t = {{"dspPermille", ctl_.dspPermille.load()},
               {"xruns", ctl_.xruns.load()}};
     res.set_content(t.dump(), "application/json");
+  });
+
+  // Live tuner readout. The tuner is a hidden chain effect that publishes pitch
+  // atomics (the UI loop pumps analyze()); the web tuner modal polls this a few
+  // times a second while open. note = 0..11 (C..B), -1 = no confident pitch.
+  svr_->Get("/api/tuner", [this](const httplib::Request&, httplib::Response& res) {
+    auto* t = static_cast<fx::Tuner*>(chain_.find("tuner"));
+    json j = t ? json{{"engaged", t->engaged()}, {"note", t->noteIndex()},
+                      {"octave", t->octave()}, {"cents", t->cents()}, {"freq", t->freqHz()}}
+               : json{{"engaged", false}, {"note", -1}, {"octave", 0}, {"cents", 0.0}, {"freq", 0.0}};
+    res.set_content(j.dump(), "application/json");
   });
 
   // {effect, param, value}
