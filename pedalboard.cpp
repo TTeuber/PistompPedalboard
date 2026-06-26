@@ -12,7 +12,8 @@
 //   WEB         -- REST over the chain's Param/PedalControls atomics.
 //
 // Build:  scripts/build.sh pedalboard
-// Deploy: rsync the binary + web/ + presets/ + a .nam to the Pi, run with sudo:
+// Deploy: rsync the binary + web/ + rigs/ + presets/ + setlists/ + a .nam to
+//         the Pi, run with sudo:
 //   ssh -t pistomp@pistomp.local 'sudo ~/app/pedalboard "/home/pistomp/app/SuperReverbNAM/...sm57.nam"'
 //   then open http://pistomp.local:8080 from any device on the LAN.
 
@@ -25,7 +26,7 @@
 #include "ui_events.h"
 #include "ui/ui_controller.h"
 #include "web_server.h"
-#include "presets.h"
+#include "rigs.h"
 #include "effects/tuner.h"
 #include "effects/input_gain.h"
 #include "effects/gate.h"
@@ -186,8 +187,8 @@ static void input_loop() {
   for (int i = 0; i < 4; i++) fs[i].close();
 }
 
-// Resolve a path next to the executable (so web/ + presets/ are found regardless
-// of the cwd ssh drops us in).
+// Resolve a path next to the executable (so web/ + rigs/ + presets/ + setlists/
+// are found regardless of the cwd ssh drops us in).
 static std::filesystem::path exe_dir() {
   char buf[4096];
 #if defined(__APPLE__)
@@ -280,7 +281,9 @@ int main(int argc, char** argv) {
 
   std::filesystem::path base = exe_dir();
   std::string webDir = (base / "web").string();
-  std::string presetDir = (base / "presets").string();
+  std::string rigDir = (base / "rigs").string();           // whole-chain rigs
+  std::string presetDir = (base / "presets").string();     // per-pedal presets
+  std::string setlistDir = (base / "setlists").string();   // ordered rig lists
 
   // --- load + prewarm the NAM model (normal thread; malloc fine here) ---
   printf("Loading NAM model: %s\n", modelPath.c_str());
@@ -337,14 +340,14 @@ int main(int argc, char** argv) {
   // Prepare every effect (sizes buffers, prewarms NAM) BEFORE going RT.
   g_chain.prepare((double)acfg.rate, period);
 
-  // Optionally start on a default preset (ignored if absent).
-  presets::load(presetDir, "Clean Worship", g_chain, g_ctl, g_fx);
+  // Optionally start on a default rig (ignored if absent).
+  rigs::load(rigDir, "Clean Worship", g_chain, g_ctl, g_fx);
 
   // --- LCD + LVGL (UI thread is main; build widgets before going RT) ---
   Ili9341 lcd;
   if (!g_board.openLcd(lcd, /*rotation=*/1)) { fprintf(stderr, "LCD init failed\n"); return 1; }
   lvgl_display::init(lcd);
-  UiController ui(g_chain, g_ctl, g_fx, tuner, ampName, presetDir);
+  UiController ui(g_chain, g_ctl, g_fx, tuner, ampName, rigDir);
   ui.begin();
 
   // --- NeoPixels (optional) ---
@@ -364,7 +367,7 @@ int main(int argc, char** argv) {
   memset(g_R, 0, sizeof(g_R));
 
   // --- web server: the primary control surface ---
-  WebServer web(g_chain, g_ctl, g_fx, webDir, presetDir);
+  WebServer web(g_chain, g_ctl, g_fx, webDir, rigDir, presetDir, setlistDir);
   if (web.start("0.0.0.0", WEB_PORT))
     printf("Web UI: http://<pi-ip>:%d/  (serving %s)\n", WEB_PORT, webDir.c_str());
 

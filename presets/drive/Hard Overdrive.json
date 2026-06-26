@@ -1,0 +1,10 @@
+{
+  "name": "Hard Overdrive",
+  "kind": "drive",
+  "params": {
+    "type": 1,
+    "drive": 80,
+    "tone": 45,
+    "level": 65
+  }
+}

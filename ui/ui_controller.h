@@ -12,7 +12,7 @@
 //   Enc1/2/3 turn: edit the 3 shown params on a control page; otherwise Enc3 = master
 //
 // Pages: Home (Input/FX/Output boxes) -> section lists -> per-pedal control page;
-// plus a Menu (bypass/tuner/presets) and the full-screen Tuner takeover.
+// plus a Menu (bypass/tuner/rigs) and the full-screen Tuner takeover.
 
 #pragma once
 
@@ -36,7 +36,7 @@ namespace pistomp { class InputLevel; }
 class UiController {
 public:
   UiController(Chain& chain, PedalControls& ctl, FxFactory& factory,
-               fx::Tuner* tuner, std::string ampName, std::string presetDir);
+               fx::Tuner* tuner, std::string ampName, std::string rigDir);
 
   void begin();                   // build the initial (Home) page
   void handle(const UiEvent& e);  // act on one input event
@@ -55,7 +55,7 @@ private:
   enum Action {
     ActNone, ActBack, ActGotoInput, ActGotoFx, ActGotoOutput, ActGotoMenu,
     ActOpenEffect, ActOpenMaster, ActTogglePower, ActToggleBypass,
-    ActToggleTuner, ActLoadPreset, ActParamBank,
+    ActToggleTuner, ActLoadRig, ActParamBank,
     ActOpenPicker, ActAddFx, ActRemoveFx, ActGotoAssign
   };
 
@@ -64,7 +64,7 @@ private:
     lv_obj_t* lbl = nullptr;   // inner label, for dynamic text updates
     Action action = ActNone;
     Effect* fx = nullptr;
-    int idx = 0;               // preset index / param-bank payload
+    int idx = 0;               // rig index / param-bank payload
   };
 
   // --- navigation ---
@@ -106,7 +106,7 @@ private:
   pistomp::InputLevel* inputLevel_ = nullptr;   // analog level source (null/absent in sim)
   VuMeter vu_[2];                                // input-level meters: [0]=in1/L, [1]=in2/R
   std::string ampName_;
-  std::string presetDir_;
+  std::string rigDir_;
 
   Page page_ = Home;
   std::vector<FocusItem> items_;
@@ -115,7 +115,7 @@ private:
   Effect* current_ = nullptr;   // effect on the PedalControl page
   int paramBase_ = 0;           // knob bank offset when an effect has > 3 params
   int pickerSlot_ = -1;         // grid slot the FxPicker is filling
-  std::vector<std::string> presetNames_;   // backs the Menu's "Load <name>" rows
+  std::vector<std::string> rigNames_;   // backs the Menu's "Rig: <name>" rows
 
   bool tunerActive_ = false;    // tuner full-screen takeover currently shown
 

@@ -1,0 +1,10 @@
+{
+  "name": "Light Crunch",
+  "kind": "drive",
+  "params": {
+    "type": 0,
+    "drive": 25,
+    "tone": 65,
+    "level": 75
+  }
+}

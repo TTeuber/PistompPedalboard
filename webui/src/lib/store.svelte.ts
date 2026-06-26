@@ -7,7 +7,7 @@
 // re-render -- so a hardware change never yanks a slider you're dragging.
 
 import { api } from './api.js';
-import type { BoardState, Telemetry } from './types.js';
+import type { BoardState, PedalPresetList, Telemetry } from './types.js';
 
 export const board: BoardState = $state({
   master: 1,
@@ -19,6 +19,28 @@ export const board: BoardState = $state({
 });
 
 export const status = $state({ dspPermille: 0, xruns: 0, live: false });
+
+// Per-pedal preset NAMES, cached by pedal KIND ("drive", "reverb", ...). Every
+// instance of a kind shares one list; we (re)fetch lazily and after edits.
+export const pedalPresets: Record<string, string[]> = $state({});
+
+// Mirror of the server's fxBaseKind(): "drive-2" -> "drive", "drive" -> "drive".
+export function fxKind(type: string): string {
+  const m = type.match(/^(.*)-\d+$/);
+  return m ? m[1] : type;
+}
+
+// Fetch (and cache) the preset names for the kind of `effectType`.
+export async function loadPedalPresetNames(effectType: string): Promise<void> {
+  try {
+    const r = await api<PedalPresetList>(
+      `/api/pedal-presets?effect=${encodeURIComponent(effectType)}`,
+    );
+    pedalPresets[r.kind] = r.names;
+  } catch {
+    /* ignore -- the dropdown just stays empty */
+  }
+}
 
 // Fold a (possibly partial) full-state document into the store, field by field,
 // so the proxy tracks each change and any future server-added keys are ignored.

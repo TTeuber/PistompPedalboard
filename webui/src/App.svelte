@@ -13,9 +13,10 @@
   import Pedal from './lib/Pedal.svelte';
   import EmptySlot from './lib/EmptySlot.svelte';
   import FootswitchBar from './lib/FootswitchBar.svelte';
+  import Setlists from './lib/Setlists.svelte';
 
-  let presetNames = $state<string[]>([]);
-  let presetSel = $state('');
+  let rigNames = $state<string[]>([]);
+  let rigSel = $state('');
   let saveName = $state('');
 
   // The board mirrors the device's Input / FX / Output layout, all derived from
@@ -31,9 +32,9 @@
   const masterPct = $derived(Math.round(board.master * 100));
   const telem = $derived(`DSP ${(status.dspPermille / 10).toFixed(1)}%  ·  xruns ${status.xruns}`);
 
-  async function loadPresetNames() {
+  async function loadRigNames() {
     try {
-      presetNames = await api<string[]>('/api/presets');
+      rigNames = await api<string[]>('/api/rigs');
     } catch {
       /* ignore */
     }
@@ -41,7 +42,7 @@
 
   onMount(() => {
     refresh().catch(console.error);
-    loadPresetNames();
+    loadRigNames();
     const es = connectLive();
     const t = setInterval(pollTelemetry, 1000);
     return () => {
@@ -58,16 +59,16 @@
     board.bypassed = !board.bypassed;
     api('/api/bypass', { bypassed: board.bypassed }).catch(console.error);
   }
-  async function loadPreset() {
-    if (!presetSel) return;
-    applyState(await api<BoardState>('/api/preset/load', { name: presetSel }));
+  async function loadRig() {
+    if (!rigSel) return;
+    applyState(await api<BoardState>('/api/rig/load', { name: rigSel }));
   }
-  async function savePreset() {
+  async function saveRig() {
     const name = saveName.trim();
     if (!name) return;
-    await api('/api/preset/save', { name });
+    await api('/api/rig/save', { name });
     saveName = '';
-    loadPresetNames();
+    loadRigNames();
   }
 </script>
 
@@ -93,21 +94,23 @@
   </div>
 </header>
 
-<section class="presets">
+<section class="toolbar">
   <label>
-    Preset
-    <select bind:value={presetSel}>
+    <span class="title">Rig</span>
+    <select bind:value={rigSel}>
       <option value="">—</option>
-      {#each presetNames as n}
+      {#each rigNames as n}
         <option value={n}>{n}</option>
       {/each}
     </select>
   </label>
-  <button onclick={loadPreset}>Load</button>
+  <button onclick={loadRig}>Load</button>
   <input type="text" placeholder="save as…" bind:value={saveName} />
-  <button onclick={savePreset}>Save</button>
+  <button onclick={saveRig}>Save</button>
   <span class="telemetry">{telem}</span>
 </section>
+
+<Setlists />
 
 <main class="board">
   <section class="lane">

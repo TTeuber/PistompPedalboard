@@ -7,7 +7,7 @@
 #include "../footswitch_control.h"
 #include "../fx_factory.h"
 #include "../pedal_controls.h"
-#include "../presets.h"
+#include "../rigs.h"
 #include "../effects/tuner.h"
 
 #include "leds.h"
@@ -91,9 +91,9 @@ int paramPct(const Param* p) {
 
 UiController::UiController(Chain& chain, PedalControls& ctl, FxFactory& factory,
                           fx::Tuner* tuner, std::string ampName,
-                          std::string presetDir)
+                          std::string rigDir)
     : chain_(chain), ctl_(ctl), factory_(factory), tuner_(tuner),
-      ampName_(std::move(ampName)), presetDir_(std::move(presetDir)) {}
+      ampName_(std::move(ampName)), rigDir_(std::move(rigDir)) {}
 
 void UiController::begin() { goTo(Home); }
 
@@ -171,9 +171,9 @@ void UiController::select() {
     case ActToggleTuner:
       if (tuner_) tuner_->enabled.store(!tuner_->engaged());
       break;
-    case ActLoadPreset:
-      if (it.idx >= 0 && it.idx < (int)presetNames_.size())
-        presets::load(presetDir_, presetNames_[it.idx], chain_, ctl_, factory_);
+    case ActLoadRig:
+      if (it.idx >= 0 && it.idx < (int)rigNames_.size())
+        rigs::load(rigDir_, rigNames_[it.idx], chain_, ctl_, factory_);
       break;
     case ActParamBank:
       if (current_) {
@@ -475,10 +475,10 @@ void UiController::buildMenu() {
   addRow(scr, row++, ActToggleBypass, nullptr, 0);  // text set in refresh()
   addRow(scr, row++, ActToggleTuner, nullptr, 0);
 
-  presetNames_ = presets::list(presetDir_);
-  for (int i = 0; i < (int)presetNames_.size(); i++) {
-    addRow(scr, row++, ActLoadPreset, nullptr, i);
-    std::string s = "Load: " + presetNames_[i];
+  rigNames_ = rigs::list(rigDir_);
+  for (int i = 0; i < (int)rigNames_.size(); i++) {
+    addRow(scr, row++, ActLoadRig, nullptr, i);
+    std::string s = "Rig: " + rigNames_[i];
     lv_label_set_text(items_.back().lbl, s.c_str());
   }
 }

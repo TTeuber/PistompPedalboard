@@ -41,25 +41,66 @@ header {
 }
 .bypass.active { background: var(--red); border-color: var(--red); color: #fff; }
 
-.presets {
+.toolbar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 12px 20px; border-bottom: 1px solid var(--line); color: var(--muted);
 }
-.presets label { display: flex; align-items: center; gap: 6px; }
-.presets select, .presets input, .presets button {
+.toolbar label { display: flex; align-items: center; gap: 6px; }
+.toolbar select, .toolbar input, .toolbar button {
   background: var(--panel2); color: var(--text); border: 1px solid var(--line);
   border-radius: 7px; padding: 7px 10px; font: inherit;
 }
-.presets button { cursor: pointer; }
-.presets button:hover { border-color: var(--accent); }
+.toolbar button { cursor: pointer; }
+.toolbar button:hover { border-color: var(--accent); }
+.toolbar .title { font-weight: 600; letter-spacing: .3px; color: var(--text); }
 .telemetry { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; }
 
-/* Three lanes: Input | FX grid | Output -- mirrors the device home page. */
-.board {
-  display: grid; gap: 16px; padding: 20px; align-items: start;
-  grid-template-columns: minmax(220px, 1fr) minmax(360px, 2.4fr) minmax(220px, 1fr);
+/* Per-pedal preset rows inside a pedal: pick/save a knob snapshot for the kind. */
+.pedal-presets { display: flex; gap: 6px; margin-bottom: 8px; }
+.pedal-presets select, .pedal-presets input {
+  flex: 1; min-width: 0; background: #0b0f14; color: var(--text);
+  border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; font: inherit; font-size: 12px;
 }
-@media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
+.pedal-presets .mini { flex: 0 0 auto; padding: 6px 10px; }
+.pedal-presets .mini:disabled { opacity: .4; cursor: default; border-color: var(--line); }
+
+/* Setlists panel: ordered list of rigs + live Prev/Next stepping. */
+.setlist {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  margin: 0 20px 20px; padding: 14px;
+}
+.setlist-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.setlist-head .title {
+  font-size: 13px; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); margin-right: 4px;
+}
+.setlist select, .setlist input, .setlist button {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  border-radius: 7px; padding: 7px 10px; font: inherit;
+}
+.setlist button { cursor: pointer; }
+.setlist button:hover:not(:disabled) { border-color: var(--accent); }
+.setlist button:disabled { opacity: .4; cursor: default; }
+.setlist-rigs { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 12px; }
+.setlist-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 9px;
+}
+.setlist-row.current { border-color: var(--accent); box-shadow: 0 0 8px -3px var(--accent); }
+.setlist-row .idx { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 22px; }
+.setlist-row .name { flex: 1; }
+.setlist-row .mini { flex: 0 0 auto; padding: 5px 9px; }
+.setlist-active { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.setlist-active .now { font-weight: 600; min-width: 120px; }
+.setlist-empty { color: var(--muted); font-size: 13px; padding: 4px 0 10px; }
+
+/* Lanes stacked vertically (Input over FX over Output), each full page width so
+   the pedals + their new preset rows get room to breathe. Within a lane the
+   pedals flow horizontally, wrapping as space allows. */
+.board {
+  display: flex; flex-direction: column; gap: 16px; padding: 20px;
+}
 .lane {
   background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
 }
@@ -68,7 +109,9 @@ header {
   color: var(--muted); display: flex; align-items: baseline; gap: 8px;
 }
 .lane-sub { font-size: 11px; letter-spacing: .2px; text-transform: none; color: var(--muted); opacity: .7; }
-.lane-body { display: flex; flex-direction: column; gap: 12px; }
+.lane-body {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px;
+}
 
 /* Live footswitch bar: tap to toggle the same latches as the hardware stomps. */
 .fsbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }

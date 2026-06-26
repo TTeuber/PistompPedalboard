@@ -1,45 +1,40 @@
-// presets.h -- save/load pedalboard patches as JSON files on the Pi.
+// presets.h -- save/load per-pedal "presets" as JSON files on the Pi.
 //
-// A preset captures the values-only state of the chain: per-effect enabled flag +
-// each param value, plus the global master/bypass. The same capture()/apply()
-// helpers back the web layer's preset endpoints, so there's one mapping between
-// the live chain and JSON.
+// A preset is a knob snapshot for a single effect KIND (e.g. a Drive preset
+// "Light Crunch" / "Hard Overdrive"). It captures param VALUES ONLY -- not the
+// enabled flag, not the footswitch binding -- so loading one re-voices a pedal
+// without touching how it sits in the chain. Presets are scoped by kind, so a
+// preset saved on one Drive applies to any Drive instance (drive, drive-2, ...).
+//
+// Layout on disk: <dir>/<kind>/<name>.json = { name, kind, params:{ id:value } }
+//
+// (The whole-chain snapshot is a separate, larger concept; see rigs.h.)
 
 #pragma once
-
-#include <json.hpp>
 
 #include <string>
 #include <vector>
 
-class Chain;
-class FxFactory;
-struct PedalControls;
+class Effect;
 
 namespace presets {
 
-// List preset names (filenames without .json) found in `dir`.
-std::vector<std::string> list(const std::string& dir);
+// List preset names (filenames without .json) found in <dir>/<kind>/.
+std::vector<std::string> list(const std::string& dir, const std::string& kind);
 
-// Load dir/<name>.json into the chain. false on read/parse error. The factory
-// rebuilds the FX grid (which kind sits in which slot) recorded by the preset.
-bool load(const std::string& dir, const std::string& name, Chain& chain,
-          PedalControls& ctl, FxFactory& factory);
+// Load <dir>/<kind>/<name>.json onto `fx`, setting each matching param (clamped
+// to range). Unknown params are ignored; enabled/footswitch are left untouched.
+// false on read/parse error.
+bool load(const std::string& dir, const std::string& kind,
+          const std::string& name, Effect& fx);
 
-// Snapshot the chain to dir/<name>.json. false on write error.
-bool save(const std::string& dir, const std::string& name, Chain& chain,
-          PedalControls& ctl);
+// Snapshot fx's current param values to <dir>/<kind>/<name>.json. false on
+// write error.
+bool save(const std::string& dir, const std::string& kind,
+          const std::string& name, const Effect& fx);
 
-// Values-only document:
-//   { name, master, bypassed,
-//     fxGrid:[ null | {kind,id}, ... ],          // per-slot grid layout
-//     effects:{ id:{enabled,fsAssign,fsMode,params} } }
-nlohmann::json capture(const Chain& chain, const PedalControls& ctl);
-
-// Apply a values-only document; missing keys leave current values untouched.
-// If the document carries an fxGrid, the factory rebuilds the slots first so the
-// effects map (keyed by type_id) resolves against the restored instances.
-void apply(const nlohmann::json& doc, Chain& chain, PedalControls& ctl,
-           FxFactory& factory);
+// Delete <dir>/<kind>/<name>.json. false if it didn't exist / couldn't remove.
+bool remove(const std::string& dir, const std::string& kind,
+            const std::string& name);
 
 }  // namespace presets

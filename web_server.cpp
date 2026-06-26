@@ -6,8 +6,11 @@
 #include "effect.h"
 #include "footswitch_control.h"
 #include "fx_factory.h"
+#include "fx_id.h"
 #include "pedal_controls.h"
+#include "rigs.h"
 #include "presets.h"
+#include "setlists.h"
 
 #include <httplib.h>
 #include <json.hpp>
@@ -15,7 +18,9 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <string>
 #include <thread>
+#include <vector>
 
 using nlohmann::json;
 
@@ -101,9 +106,12 @@ void ok(httplib::Response& res) {
 }  // namespace
 
 WebServer::WebServer(Chain& chain, PedalControls& ctl, FxFactory& factory,
-                     std::string webDir, std::string presetDir)
+                     std::string webDir, std::string rigDir,
+                     std::string presetDir, std::string setlistDir)
     : chain_(chain), ctl_(ctl), factory_(factory), webDir_(std::move(webDir)),
-      presetDir_(std::move(presetDir)), svr_(std::make_unique<httplib::Server>()) {
+      rigDir_(std::move(rigDir)), presetDir_(std::move(presetDir)),
+      setlistDir_(std::move(setlistDir)),
+      svr_(std::make_unique<httplib::Server>()) {
 }
 
 WebServer::~WebServer() { stop(); }
@@ -267,17 +275,61 @@ void WebServer::setupRoutes() {
         });
   });
 
-  svr_->Get("/api/presets", [this](const httplib::Request&, httplib::Response& res) {
-    json arr = presets::list(presetDir_);
+  // ---- Rigs: whole-chain snapshots (was "presets") -------------------------
+
+  svr_->Get("/api/rigs", [this](const httplib::Request&, httplib::Response& res) {
+    json arr = rigs::list(rigDir_);
     res.set_content(arr.dump(), "application/json");
   });
 
   // {name}
-  svr_->Post("/api/preset/load", [this](const httplib::Request& req, httplib::Response& res) {
+  svr_->Post("/api/rig/load", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
     std::string name = b.value("name", std::string{});
-    if (name.empty() || !presets::load(presetDir_, name, chain_, ctl_, factory_)) {
+    if (name.empty() || !rigs::load(rigDir_, name, chain_, ctl_, factory_)) {
+      res.status = 404;
+      res.set_content("{\"error\":\"no such rig\"}", "application/json");
+      return;
+    }
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
+  });
+
+  // {name}
+  svr_->Post("/api/rig/save", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    std::string name = b.value("name", std::string{});
+    if (name.empty() || !rigs::save(rigDir_, name, chain_, ctl_)) {
+      res.status = 400;
+      res.set_content("{\"error\":\"save failed\"}", "application/json");
+      return;
+    }
+    ok(res);
+  });
+
+  // ---- Per-pedal presets: knob snapshots scoped by effect kind -------------
+  // The browser passes the effect's instance id (type_id); we derive the kind
+  // so a preset saved on "drive" applies to "drive-2" too. Load/save/delete
+  // act on the one named effect; load returns full state so the knobs update.
+
+  // ?effect=<type_id>  -> { kind, names:[...] }
+  svr_->Get("/api/pedal-presets", [this](const httplib::Request& req, httplib::Response& res) {
+    Effect* fx = chain_.find(req.get_param_value("effect"));
+    if (!fx) { res.status = 404; return; }
+    std::string kind = fxBaseKind(fx->type_id());
+    json out = {{"kind", kind}, {"names", presets::list(presetDir_, kind)}};
+    res.set_content(out.dump(), "application/json");
+  });
+
+  // {effect, name}
+  svr_->Post("/api/pedal-preset/load", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    std::string name = b.value("name", std::string{});
+    if (!fx || name.empty() ||
+        !presets::load(presetDir_, fxBaseKind(fx->type_id()), name, *fx)) {
       res.status = 404;
       res.set_content("{\"error\":\"no such preset\"}", "application/json");
       return;
@@ -285,16 +337,77 @@ void WebServer::setupRoutes() {
     res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
   });
 
-  // {name}
-  svr_->Post("/api/preset/save", [this](const httplib::Request& req, httplib::Response& res) {
+  // {effect, name}
+  svr_->Post("/api/pedal-preset/save", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
+    Effect* fx = chain_.find(b.value("effect", std::string{}));
     std::string name = b.value("name", std::string{});
-    if (name.empty() || !presets::save(presetDir_, name, chain_, ctl_)) {
+    if (!fx || name.empty() ||
+        !presets::save(presetDir_, fxBaseKind(fx->type_id()), name, *fx)) {
       res.status = 400;
       res.set_content("{\"error\":\"save failed\"}", "application/json");
       return;
     }
+    ok(res);
+  });
+
+  // {effect, name}
+  svr_->Post("/api/pedal-preset/delete", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    std::string name = b.value("name", std::string{});
+    if (!fx || name.empty()) { res.status = 400; return; }
+    presets::remove(presetDir_, fxBaseKind(fx->type_id()), name);
+    ok(res);
+  });
+
+  // ---- Setlists: an ordered list of rig names ------------------------------
+  // Stepping (next/prev rig) is client-side; the server just persists the order.
+
+  svr_->Get("/api/setlists", [this](const httplib::Request&, httplib::Response& res) {
+    json arr = setlists::list(setlistDir_);
+    res.set_content(arr.dump(), "application/json");
+  });
+
+  // ?name=<n>  -> { name, rigs:[...] }
+  svr_->Get("/api/setlist", [this](const httplib::Request& req, httplib::Response& res) {
+    std::string name = req.get_param_value("name");
+    std::vector<std::string> rigList;
+    if (name.empty() || !setlists::load(setlistDir_, name, rigList)) {
+      res.status = 404;
+      res.set_content("{\"error\":\"no such setlist\"}", "application/json");
+      return;
+    }
+    json out = {{"name", name}, {"rigs", rigList}};
+    res.set_content(out.dump(), "application/json");
+  });
+
+  // {name, rigs:[...]}
+  svr_->Post("/api/setlist/save", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    std::string name = b.value("name", std::string{});
+    std::vector<std::string> rigList;
+    if (b.contains("rigs") && b["rigs"].is_array())
+      for (const auto& r : b["rigs"])
+        if (r.is_string()) rigList.push_back(r.get<std::string>());
+    if (name.empty() || !setlists::save(setlistDir_, name, rigList)) {
+      res.status = 400;
+      res.set_content("{\"error\":\"save failed\"}", "application/json");
+      return;
+    }
+    ok(res);
+  });
+
+  // {name}
+  svr_->Post("/api/setlist/delete", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    std::string name = b.value("name", std::string{});
+    if (name.empty()) { res.status = 400; return; }
+    setlists::remove(setlistDir_, name);
     ok(res);
   });
 }

@@ -44,3 +44,16 @@ export interface Telemetry {
   dspPermille: number;
   xruns: number;
 }
+
+// GET /api/pedal-presets?effect=<type_id> -- the knob-snapshot names available
+// for a pedal's KIND (so "drive" and "drive-2" share one list).
+export interface PedalPresetList {
+  kind: string;
+  names: string[];
+}
+
+// A setlist: an ordered list of rig names to step through on stage.
+export interface Setlist {
+  name: string;
+  rigs: string[];
+}

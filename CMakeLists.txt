@@ -20,7 +20,9 @@ target_sources(pedalboard PRIVATE
   pedalboard.cpp
   ui/ui_controller.cpp
   web_server.cpp
+  rigs.cpp
   presets.cpp
+  setlists.cpp
 )
 target_compile_definitions(pedalboard PRIVATE
   JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_STANDALONE_APPLICATION=1)
@@ -73,18 +75,22 @@ else()
     "missing or stale until you build webui/ manually (cd webui && npm ci && npm run build).")
 endif()
 
-# --- macOS sim: stage web/ + presets/ next to the artefact binary -----------
-# On the Pi, deploy.sh rsyncs web/ + presets/ alongside the binary; the app
-# resolves them relative to the executable. For the local Mac sim there's no
-# deploy step, so copy them next to the JUCE artefact after the build. (web/ is
-# produced by pedalboard_webui, which pedalboard already depends on.)
+# --- macOS sim: stage web/ + rigs/ + presets/ + setlists/ next to the binary -
+# On the Pi, deploy.sh rsyncs these alongside the binary; the app resolves them
+# relative to the executable. For the local Mac sim there's no deploy step, so
+# copy them next to the JUCE artefact after the build. (web/ is produced by
+# pedalboard_webui, which pedalboard already depends on.)
 if(APPLE)
   add_custom_command(TARGET pedalboard POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/web $<TARGET_FILE_DIR:pedalboard>/web
     COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/rigs $<TARGET_FILE_DIR:pedalboard>/rigs
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/presets $<TARGET_FILE_DIR:pedalboard>/presets
-    COMMENT "Staging web/ + presets/ next to the pedalboard binary (macOS sim)"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/setlists $<TARGET_FILE_DIR:pedalboard>/setlists
+    COMMENT "Staging web/ + rigs/ + presets/ + setlists/ next to the pedalboard binary (macOS sim)"
     VERBATIM)
 endif()
 
