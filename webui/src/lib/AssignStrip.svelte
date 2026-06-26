@@ -41,3 +41,21 @@
     </button>
   {/each}
 </div>
+
+<style>
+  /* Footswitch assignment strip: one chip per FS, carrying its --fs colour. */
+  .assign { display: flex; gap: var(--sp-2); margin: var(--sp-4) 0 var(--sp-3); }
+  .fschip {
+    flex: 1;
+    padding: var(--sp-2) 0;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    font-weight: 700;
+    font-size: var(--fs-xs);
+    color: var(--muted);
+    background: var(--inset);
+    border: 1px solid var(--line);
+  }
+  .fschip.on { color: var(--ink); background: var(--fs); border-color: var(--fs); box-shadow: var(--glow) var(--fs); }
+  .fschip.inv { color: var(--fs); background: var(--inset); border-color: var(--fs); }
+</style>

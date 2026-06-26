@@ -100,3 +100,51 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .pedal {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4);
+    transition: opacity var(--t-med), border-color var(--t-med);
+  }
+  .pedal.off { opacity: .5; }
+  .pedal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-3); }
+  .pedal-head h3 {
+    font-size: var(--fs-sm);
+    margin: 0;
+    letter-spacing: var(--track);
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  /* On/off power dot. */
+  .power {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 2px solid var(--line);
+    background: var(--inset);
+    cursor: pointer;
+  }
+  .power.on { border-color: var(--ok); box-shadow: var(--glow) var(--ok); background: var(--ok); }
+
+  /* Per-pedal preset rows: pick/save a knob snapshot for the kind. */
+  .pedal-presets { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+  .pedal-presets select,
+  .pedal-presets input {
+    flex: 1;
+    min-width: 0;
+    background: var(--inset);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: var(--sp-2) var(--sp-3);
+    font: inherit;
+    font-size: var(--fs-xs);
+  }
+  .pedal-presets :global(.mini) { flex: 0 0 auto; padding: var(--sp-2) var(--sp-3); }
+
+  .pedal-foot { display: flex; gap: var(--sp-2); }
+</style>

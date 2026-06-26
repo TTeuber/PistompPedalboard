@@ -78,3 +78,35 @@
     />
   {/if}
 </div>
+
+<style>
+  .param { margin: var(--sp-4) 0; }
+  .param label {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--fs-sm);
+    color: var(--muted);
+    margin-bottom: var(--sp-2);
+  }
+  .param output { color: var(--text); font-variant-numeric: tabular-nums; }
+  .param input[type=range] { width: 100%; }
+  .param select {
+    width: 100%;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: 7px;
+  }
+  .toggle {
+    width: 100%;
+    padding: var(--sp-3);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    font-weight: 600;
+  }
+  .toggle.on { background: var(--accent); color: var(--ink); border-color: var(--accent); }
+</style>

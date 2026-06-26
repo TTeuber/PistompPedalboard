@@ -145,3 +145,52 @@
     <button onclick={() => step(1)} disabled={!rigs.length}>Next ▶</button>
   </div>
 </section>
+
+<style>
+  /* Setlists panel: ordered list of rigs + live Prev/Next stepping. */
+  .setlist {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--r-xl);
+    margin: 0 var(--sp-6) var(--sp-6);
+    padding: var(--sp-4);
+  }
+  .setlist-head { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-4); }
+  .setlist-head .title {
+    font-size: var(--fs-sm);
+    letter-spacing: var(--track-wide);
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-right: var(--sp-1);
+  }
+  .setlist select,
+  .setlist input,
+  .setlist button {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: 7px var(--sp-4);
+    font: inherit;
+  }
+  .setlist button { cursor: pointer; }
+  .setlist button:hover:not(:disabled) { border-color: var(--accent); }
+  .setlist button:disabled { opacity: .4; cursor: default; }
+  .setlist-rigs { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-2) 0 var(--sp-4); }
+  .setlist-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+  }
+  .setlist-row.current { border-color: var(--accent); box-shadow: 0 0 8px -3px var(--accent); }
+  .setlist-row .idx { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 22px; }
+  .setlist-row .name { flex: 1; }
+  .setlist-row :global(.mini) { flex: 0 0 auto; padding: 5px var(--sp-3); }
+  .setlist-active { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
+  .setlist-active .now { font-weight: 600; min-width: 120px; }
+  .setlist-empty { color: var(--muted); font-size: var(--fs-sm); padding: var(--sp-1) 0 var(--sp-3); }
+</style>

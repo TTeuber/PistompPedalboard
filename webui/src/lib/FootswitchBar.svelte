@@ -32,3 +32,34 @@
     </button>
   {/each}
 </div>
+
+<style>
+  /* Live footswitch bar: tap to toggle the same latches as the hardware stomps.
+     Each switch carries its hardware NeoPixel colour via the inline --fs var. */
+  .fsbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-3); margin-bottom: var(--sp-4); }
+  .fsswitch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: var(--sp-3) 0;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    font: inherit;
+    background: var(--inset);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-bottom: 3px solid var(--line);
+    transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
+  }
+  .fsswitch .fsnum { font-weight: 700; font-size: var(--fs-xs); letter-spacing: .5px; }
+  .fsswitch .fsstate { font-size: 10px; font-variant-numeric: tabular-nums; }
+  .fsswitch.engaged {
+    color: var(--ink);
+    background: var(--fs);
+    border-color: var(--fs);
+    border-bottom-color: color-mix(in srgb, var(--fs) 55%, #000);
+    box-shadow: var(--glow) var(--fs);
+  }
+  .fsswitch.idle { opacity: .5; } /* no pedals bound -> visually inert */
+</style>

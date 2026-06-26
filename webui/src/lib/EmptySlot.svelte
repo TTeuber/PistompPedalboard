@@ -21,3 +21,26 @@
     {/each}
   </select>
 </div>
+
+<style>
+  .slot-empty {
+    border: 1px dashed var(--line);
+    border-radius: var(--r-lg);
+    background: var(--inset);
+    min-height: 78px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--sp-3);
+  }
+  .slot-empty select {
+    width: 100%;
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: var(--sp-3);
+    cursor: pointer;
+  }
+  .slot-empty select:hover { border-color: var(--accent); color: var(--text); }
+</style>

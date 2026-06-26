@@ -1,197 +1,126 @@
+/* ============================================================
+   pi-Stomp Pedalboard — design tokens + global base
+   ------------------------------------------------------------
+   Gold-on-black with jewel-tone accents. Component-specific
+   styling lives in each .svelte file's scoped <style> block;
+   this file holds only:
+     - the token layer (:root)  <- change the look from here
+     - reset + base typography
+     - base range inputs (used app-wide)
+     - the shared .mini button utility (Pedal footer + Setlist)
+   ============================================================ */
+
 :root {
-  --bg: #0d1117;
-  --panel: #161b22;
-  --panel2: #1c232d;
-  --line: #2a313c;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #00c8ff;
-  --green: #30d158;
-  --red: #ff453a;
+  /* ---- palette: gold / brass ------------------------------- */
+  --gold:        #c9a45c;
+  --gold-bright: #e6c074;
+  --gold-dim:    #6f5d2e;
+
+  /* ---- palette: jewel tones (secondary accents) ------------ */
+  --ruby:     #d34a5e;
+  --emerald:  #3fae74;
+  --sapphire: #4f7fd6;
+  --amethyst: #9a6cd0;
+  --topaz:    #e0a341;
+  --teal:     #34b0a4;
+
+  /* ---- surfaces -------------------------------------------- */
+  --bg:       #0a0a0c;   /* page */
+  --panel:    #131316;   /* lanes, cards */
+  --panel-2:  #1a1a1f;   /* controls, raised chips */
+  --inset:    #070709;   /* recessed wells (inputs, knob bg) */
+  --line:     #2a2a31;   /* hairline borders */
+  --line-2:   #3a3a44;   /* hover / emphasis borders */
+
+  /* ---- ink ------------------------------------------------- */
+  --text:     #ece7db;   /* warm off-white */
+  --muted:    #8d887b;
+  --faint:    #5c584f;
+  --ink:      #0c0b07;   /* text sitting on a bright accent */
+
+  /* ---- semantic -------------------------------------------- */
+  --accent:   var(--gold);
+  --ok:       var(--emerald);
+  --warn:     var(--topaz);
+  --danger:   var(--ruby);
+
+  /* ---- spacing scale --------------------------------------- */
+  --sp-1: 4px;  --sp-2: 6px;  --sp-3: 8px;
+  --sp-4: 12px; --sp-5: 16px; --sp-6: 20px; --sp-7: 28px;
+
+  /* ---- radii ----------------------------------------------- */
+  --r-sm: 7px; --r-md: 9px; --r-lg: 12px; --r-xl: 14px; --r-pill: 999px;
+
+  /* ---- typography ------------------------------------------ */
+  --font:      -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Roboto Mono", monospace;
+  --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px;
+  --lh: 1.4;
+  --track:      .3px;
+  --track-wide: .6px;
+
+  /* ---- depth / light --------------------------------------- */
+  --bevel-hi: rgba(255, 255, 255, .05);   /* top edge catch-light */
+  --bevel-lo: rgba(0, 0, 0, .5);          /* bottom edge shadow */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-2: 0 6px 20px -8px rgba(0, 0, 0, .65);
+  --glow:     0 0 12px -2px;               /* compose: var(--glow) <color> */
+
+  /* ---- motion ---------------------------------------------- */
+  --t-fast: .12s; --t-med: .2s;
 }
+
 * { box-sizing: border-box; }
+
 body {
   margin: 0;
-  font: 15px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  font: var(--fs-md)/var(--lh) var(--font);
   background: var(--bg);
   color: var(--text);
   -webkit-tap-highlight-color: transparent;
 }
-header {
-  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
-  gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, #11171f, #0d1117);
-  position: sticky; top: 0; z-index: 5;
-}
-.brand { display: flex; align-items: center; gap: 10px; }
-.brand h1 { font-size: 17px; margin: 0; font-weight: 600; letter-spacing: .2px; }
-.brand em { color: var(--accent); font-style: normal; font-weight: 500; }
-.dot {
-  width: 10px; height: 10px; border-radius: 50%; background: var(--green);
-  box-shadow: 0 0 10px var(--green); transition: background .2s, box-shadow .2s;
-}
-.dot.offline { background: var(--muted); box-shadow: none; }
-.globals { display: flex; align-items: center; gap: 16px; }
-.master { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-.master output { color: var(--text); min-width: 42px; text-align: right; }
-.master input { width: 130px; }
-.bypass {
-  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
-  padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600;
-}
-.bypass.active { background: var(--red); border-color: var(--red); color: #fff; }
 
-.toolbar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 12px 20px; border-bottom: 1px solid var(--line); color: var(--muted);
+/* Base range input — used by the master slider and every ParamControl.
+   Component <style> blocks can't reach the pseudo-elements cleanly, so
+   the slider chrome stays global. */
+input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--line);
 }
-.toolbar label { display: flex; align-items: center; gap: 6px; }
-.toolbar select, .toolbar input, .toolbar button {
-  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
-  border-radius: 7px; padding: 7px 10px; font: inherit;
-}
-.toolbar button { cursor: pointer; }
-.toolbar button:hover { border-color: var(--accent); }
-.toolbar .title { font-weight: 600; letter-spacing: .3px; color: var(--text); }
-.telemetry { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; }
-
-/* Per-pedal preset rows inside a pedal: pick/save a knob snapshot for the kind. */
-.pedal-presets { display: flex; gap: 6px; margin-bottom: 8px; }
-.pedal-presets select, .pedal-presets input {
-  flex: 1; min-width: 0; background: #0b0f14; color: var(--text);
-  border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; font: inherit; font-size: 12px;
-}
-.pedal-presets .mini { flex: 0 0 auto; padding: 6px 10px; }
-.pedal-presets .mini:disabled { opacity: .4; cursor: default; border-color: var(--line); }
-
-/* Setlists panel: ordered list of rigs + live Prev/Next stepping. */
-.setlist {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-  margin: 0 20px 20px; padding: 14px;
-}
-.setlist-head {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
-}
-.setlist-head .title {
-  font-size: 13px; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); margin-right: 4px;
-}
-.setlist select, .setlist input, .setlist button {
-  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
-  border-radius: 7px; padding: 7px 10px; font: inherit;
-}
-.setlist button { cursor: pointer; }
-.setlist button:hover:not(:disabled) { border-color: var(--accent); }
-.setlist button:disabled { opacity: .4; cursor: default; }
-.setlist-rigs { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 12px; }
-.setlist-row {
-  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 9px;
-}
-.setlist-row.current { border-color: var(--accent); box-shadow: 0 0 8px -3px var(--accent); }
-.setlist-row .idx { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 22px; }
-.setlist-row .name { flex: 1; }
-.setlist-row .mini { flex: 0 0 auto; padding: 5px 9px; }
-.setlist-active { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.setlist-active .now { font-weight: 600; min-width: 120px; }
-.setlist-empty { color: var(--muted); font-size: 13px; padding: 4px 0 10px; }
-
-/* Lanes stacked vertically (Input over FX over Output), each full page width so
-   the pedals + their new preset rows get room to breathe. Within a lane the
-   pedals flow horizontally, wrapping as space allows. */
-.board {
-  display: flex; flex-direction: column; gap: 16px; padding: 20px;
-}
-.lane {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px;
-}
-.lane-title {
-  font-size: 13px; margin: 0 0 12px; letter-spacing: .6px; text-transform: uppercase;
-  color: var(--muted); display: flex; align-items: baseline; gap: 8px;
-}
-.lane-sub { font-size: 11px; letter-spacing: .2px; text-transform: none; color: var(--muted); opacity: .7; }
-.lane-body {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px;
-}
-
-/* Live footswitch bar: tap to toggle the same latches as the hardware stomps. */
-.fsbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
-.fsswitch {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 10px 0; border-radius: 10px; cursor: pointer; font: inherit;
-  background: #0b0f14; color: var(--muted);
-  border: 1px solid var(--line); border-bottom: 3px solid var(--line);
-  transition: background .12s, color .12s, border-color .12s, box-shadow .12s;
-}
-.fsswitch .fsnum { font-weight: 700; font-size: 12px; letter-spacing: .5px; }
-.fsswitch .fsstate { font-size: 10px; font-variant-numeric: tabular-nums; }
-.fsswitch.engaged {
-  color: #04121a; background: var(--fs); border-color: var(--fs);
-  border-bottom-color: color-mix(in srgb, var(--fs) 55%, #000);
-  box-shadow: 0 0 10px -2px var(--fs);
-}
-.fsswitch.idle { opacity: .5; }   /* no pedals bound -> visually inert */
-
-/* FX grid: 4 columns, mirrors the device's 4x2 slot layout. */
-.fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-@media (max-width: 1200px) { .fx-grid { grid-template-columns: repeat(2, 1fr); } }
-.slot-empty {
-  border: 1px dashed var(--line); border-radius: 12px; background: #0f141b;
-  min-height: 78px; display: flex; align-items: center; justify-content: center; padding: 8px;
-}
-.slot-empty select {
-  width: 100%; background: var(--panel2); color: var(--muted);
-  border: 1px solid var(--line); border-radius: 8px; padding: 8px; cursor: pointer;
-}
-.slot-empty select:hover { border-color: var(--accent); color: var(--text); }
-
-.pedal {
-  background: var(--panel2); border: 1px solid var(--line); border-radius: 12px;
-  padding: 12px; transition: opacity .15s, border-color .15s;
-}
-.pedal.off { opacity: .5; }
-.pedal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.pedal-head h3 { font-size: 13px; margin: 0; letter-spacing: .3px; text-transform: uppercase; color: var(--accent); }
-
-/* Footswitch assignment strip + grid pedal footer */
-.assign { display: flex; gap: 6px; margin: 12px 0 8px; }
-.fschip {
-  flex: 1; padding: 6px 0; border-radius: 7px; cursor: pointer; font-weight: 700; font-size: 12px;
-  color: var(--muted); background: #0b0f14; border: 1px solid var(--line);
-}
-.fschip.on { color: #04121a; background: var(--fs); border-color: var(--fs); box-shadow: 0 0 8px -2px var(--fs); }
-.fschip.inv { color: var(--fs); background: #0b0f14; border-color: var(--fs); }
-.pedal-foot { display: flex; gap: 6px; }
-.mini {
-  flex: 1; padding: 6px 0; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 600;
-  background: #0b0f14; color: var(--text); border: 1px solid var(--line);
-}
-.mini:hover { border-color: var(--accent); }
-.mini.danger:hover { border-color: var(--red); color: var(--red); }
-.power {
-  width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line);
-  background: #0b0f14; cursor: pointer; position: relative;
-}
-.power.on { border-color: var(--green); box-shadow: 0 0 8px rgba(48,209,88,.6); background: var(--green); }
-
-.param { margin: 12px 0; }
-.param label { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-.param output { color: var(--text); font-variant-numeric: tabular-nums; }
-.param input[type=range] { width: 100%; }
-.param select {
-  width: 100%; background: var(--panel2); color: var(--text);
-  border: 1px solid var(--line); border-radius: 7px; padding: 7px;
-}
-.toggle {
-  width: 100%; padding: 8px; border-radius: 7px; cursor: pointer;
-  background: var(--panel2); color: var(--muted); border: 1px solid var(--line); font-weight: 600;
-}
-.toggle.on { background: var(--accent); color: #04121a; border-color: var(--accent); }
-
-input[type=range] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: var(--line); }
 input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
-  background: var(--accent); cursor: pointer; box-shadow: 0 0 6px rgba(0,200,255,.5);
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: var(--glow) var(--accent);
 }
 input[type=range]::-moz-range-thumb {
-  width: 18px; height: 18px; border: none; border-radius: 50%; background: var(--accent); cursor: pointer;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
 }
+
+/* Shared compact button — used in the Pedal grid footer and Setlist rows. */
+.mini {
+  flex: 1;
+  padding: var(--sp-2) 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  background: var(--inset);
+  color: var(--text);
+  border: 1px solid var(--line);
+  transition: border-color var(--t-fast), color var(--t-fast);
+}
+.mini:hover:not(:disabled) { border-color: var(--accent); }
+.mini:disabled { opacity: .4; cursor: default; }
+.mini.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
