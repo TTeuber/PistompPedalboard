@@ -13,6 +13,8 @@
   import EmptySlot from './lib/EmptySlot.svelte';
   import FootswitchBar from './lib/FootswitchBar.svelte';
   import Sidebar from './lib/Sidebar.svelte';
+  import RigControls from './lib/RigControls.svelte';
+  import { loadLists } from './lib/rigs.svelte.js';
   import TunerButton from './lib/TunerButton.svelte';
   import TunerModal from './lib/TunerModal.svelte';
   import SetlistEditor from './lib/SetlistEditor.svelte';
@@ -39,6 +41,7 @@
 
   onMount(() => {
     refresh().catch(console.error);
+    loadLists().catch(console.error);
     const es = connectLive();
     const t = setInterval(pollTelemetry, 1000);
     const onHash = () => (route = routeOf());
@@ -70,8 +73,10 @@
     <div class="brand">
       <span class="dot" class:offline={!status.live} title={status.live ? 'Live' : 'Reconnecting…'}
       ></span>
-      <h1>pi-Stomp <em>Worship Pedalboard</em></h1>
+      <span class="logo" title="pi-Stomp">π</span>
     </div>
+
+    <RigControls />
 
     <div class="globals">
       <span class="telemetry">{telem}</span>
@@ -154,8 +159,13 @@
     z-index: 5;
   }
   .brand { display: flex; align-items: center; gap: var(--sp-3); }
-  .brand h1 { font-size: var(--fs-lg); margin: 0; font-weight: 600; letter-spacing: .2px; }
-  .brand em { color: var(--accent); font-style: normal; font-weight: 500; }
+  .logo {
+    font-size: 26px;
+    line-height: 1;
+    font-weight: 700;
+    color: var(--accent);
+    font-family: var(--font-mono);
+  }
   .dot {
     width: 10px;
     height: 10px;
@@ -195,10 +205,20 @@
   }
   .bypass.active { background: var(--danger); border-color: var(--danger); color: #fff; }
 
-  /* The body row: sidebar (own width/scroll) + board (fills, scrolls). */
-  .shell { flex: 1 1 auto; display: flex; min-height: 0; }
+  /* The body row: the sidebar floats over the board (position:absolute within
+     this relative box), so the board always spans the full width and only the
+     collapsed rail's worth of left padding is reserved for it. */
+  .shell { position: relative; flex: 1 1 auto; min-height: 0; }
 
-  .board { flex: 1 1 auto; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-5); padding: var(--sp-6); }
+  .board {
+    height: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+    padding: var(--sp-6);
+    padding-left: calc(46px + var(--sp-5));
+  }
   .lane {
     background: var(--panel);
     border: 1px solid var(--line);

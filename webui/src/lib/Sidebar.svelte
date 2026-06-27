@@ -1,63 +1,14 @@
 <script lang="ts">
-  // Left rail (collapsible): pick a setlist, then pick a rig from it to load onto
-  // the board. "All rigs" lists the whole catalogue so nothing is ever out of
-  // reach. Authoring rigs/setlists lives in the dedicated editor view (#setlists).
-  import { onMount } from 'svelte';
-  import { api } from './api.js';
-  import { applyState } from './store.svelte.js';
-  import type { BoardState, Setlist } from './types.js';
+  // Left rail (collapsible) that FLOATS over the board: pick a setlist, then pick
+  // a rig from it to load. "All rigs" lists the whole catalogue so nothing is
+  // ever out of reach. Browsing state is shared (rigs.svelte.ts) with the top-bar
+  // rig controls; authoring lives in the dedicated editor view (#setlists).
+  import { ALL, rigState, chooseSetlist, pickRig, step } from './rigs.svelte.js';
 
-  const ALL = '__all__';
   const KEY = 'pedalboard.sidebarCollapsed';
 
   let collapsed = $state(localStorage.getItem(KEY) === '1');
   $effect(() => localStorage.setItem(KEY, collapsed ? '1' : '0'));
-
-  let setlistNames = $state<string[]>([]);
-  let allRigs = $state<string[]>([]);
-  let selSetlist = $state(ALL);
-  let viewRigs = $state<string[]>([]); // rigs shown for the current selection
-  let activeRig = $state(''); // last rig we loaded (for highlight + stepping)
-
-  async function loadLists() {
-    try {
-      [setlistNames, allRigs] = await Promise.all([
-        api<string[]>('/api/setlists'),
-        api<string[]>('/api/rigs'),
-      ]);
-    } catch {
-      /* ignore */
-    }
-    chooseSetlist(selSetlist);
-  }
-
-  onMount(loadLists);
-
-  async function chooseSetlist(name: string) {
-    selSetlist = name;
-    if (name === ALL) {
-      viewRigs = allRigs;
-      return;
-    }
-    try {
-      const s = await api<Setlist>(`/api/setlist?name=${encodeURIComponent(name)}`);
-      viewRigs = s.rigs;
-    } catch {
-      viewRigs = [];
-    }
-  }
-
-  async function pickRig(name: string) {
-    activeRig = name;
-    applyState(await api<BoardState>('/api/rig/load', { name }));
-  }
-  function step(dir: number) {
-    if (!viewRigs.length) return;
-    const cur = viewRigs.indexOf(activeRig);
-    const next =
-      cur < 0 ? (dir > 0 ? 0 : viewRigs.length - 1) : Math.min(viewRigs.length - 1, Math.max(0, cur + dir));
-    pickRig(viewRigs[next]);
-  }
 </script>
 
 <aside class="sidebar" class:collapsed>
@@ -76,28 +27,30 @@
     <div class="content">
       <label class="field">
         <span class="field-label">Setlist</span>
-        <select value={selSetlist} onchange={(e) => chooseSetlist(e.currentTarget.value)}>
+        <select value={rigState.selSetlist} onchange={(e) => chooseSetlist(e.currentTarget.value)}>
           <option value={ALL}>All rigs</option>
-          {#each setlistNames as n}
+          {#each rigState.setlistNames as n}
             <option value={n}>{n}</option>
           {/each}
         </select>
       </label>
 
       <ul class="riglist">
-        {#each viewRigs as r (r)}
+        {#each rigState.viewRigs as r (r)}
           <li>
-            <button class="rig" class:active={r === activeRig} onclick={() => pickRig(r)}>{r}</button>
+            <button class="rig" class:active={r === rigState.activeRig} onclick={() => pickRig(r)}
+              >{r}</button
+            >
           </li>
         {/each}
-        {#if !viewRigs.length}
-          <li class="empty">{selSetlist === ALL ? 'No rigs saved yet' : 'Setlist is empty'}</li>
+        {#if !rigState.viewRigs.length}
+          <li class="empty">{rigState.selSetlist === ALL ? 'No rigs saved yet' : 'Setlist is empty'}</li>
         {/if}
       </ul>
 
       <div class="stepper">
-        <button onclick={() => step(-1)} disabled={!viewRigs.length}>◀ Prev</button>
-        <button onclick={() => step(1)} disabled={!viewRigs.length}>Next ▶</button>
+        <button onclick={() => step(-1)} disabled={!rigState.viewRigs.length}>◀ Prev</button>
+        <button onclick={() => step(1)} disabled={!rigState.viewRigs.length}>Next ▶</button>
       </div>
 
       <button class="edit" onclick={() => (location.hash = '#setlists')}>Edit setlists…</button>
@@ -106,17 +59,24 @@
 </aside>
 
 <style>
+  /* Floats over the board (absolute within .shell), so expanding it never
+     reflows Input/FX/Output -- it slides in front of them like a drawer. */
   .sidebar {
-    flex: 0 0 300px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
     width: 300px;
+    z-index: 20;
     overflow-y: auto;
     border-right: 1px solid var(--line);
-    background: var(--bg);
+    background: var(--panel);
+    box-shadow: var(--shadow-2);
     display: flex;
     flex-direction: column;
-    transition: flex-basis var(--t-med), width var(--t-med);
+    transition: width var(--t-med);
   }
-  .sidebar.collapsed { flex-basis: 46px; width: 46px; overflow: hidden; }
+  .sidebar.collapsed { width: 46px; overflow: hidden; box-shadow: var(--shadow-1); }
 
   .head {
     display: flex;
@@ -164,7 +124,7 @@
     font: inherit;
   }
 
-  /* Menu/list of rigs — flat rows, not cards. */
+  /* Menu/list of rigs -- flat rows, not cards. */
   .riglist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
   .rig {
     width: 100%;
@@ -179,7 +139,7 @@
     cursor: pointer;
     transition: background var(--t-fast), color var(--t-fast);
   }
-  .rig:hover { background: var(--panel); }
+  .rig:hover { background: var(--panel-2); }
   .rig.active {
     background: color-mix(in srgb, var(--accent) 14%, transparent);
     border-left-color: var(--accent);
