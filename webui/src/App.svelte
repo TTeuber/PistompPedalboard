@@ -111,14 +111,27 @@
     <Sidebar />
 
     <main class="board">
-      <section class="lane">
-        <h2 class="lane-title">Input</h2>
-        <div class="lane-body">
-          {#each inputFx as fx (fx.type)}
-            <Pedal {fx} />
-          {/each}
-        </div>
-      </section>
+      <!-- Input + Output ride above FX so the whole board fits without scrolling;
+           neither is in a card, just a titled rack of flat strips. -->
+      <div class="io-row">
+        <section class="lane">
+          <h2 class="lane-title">Input</h2>
+          <div class="rack">
+            {#each inputFx as fx (fx.type)}
+              <Pedal {fx} />
+            {/each}
+          </div>
+        </section>
+
+        <section class="lane">
+          <h2 class="lane-title">Output</h2>
+          <div class="rack">
+            {#each outputFx as fx (fx.type)}
+              <Pedal {fx} />
+            {/each}
+          </div>
+        </section>
+      </div>
 
       <section class="lane lane-fx">
         <h2 class="lane-title">FX <span class="lane-sub">tap a footswitch · drag a pedal to reorder</span></h2>
@@ -140,15 +153,6 @@
             </div>
           </div>
           <FxParamsPanel fx={selectedFx} />
-        </div>
-      </section>
-
-      <section class="lane">
-        <h2 class="lane-title">Output</h2>
-        <div class="lane-body">
-          {#each outputFx as fx (fx.type)}
-            <Pedal {fx} />
-          {/each}
         </div>
       </section>
     </main>
@@ -235,18 +239,14 @@
     display: flex;
     flex-direction: column;
     gap: var(--sp-5);
-    padding: var(--sp-6);
+    padding: var(--sp-5) var(--sp-6);
     padding-left: calc(46px + var(--sp-5));
   }
-  .lane {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: var(--r-xl);
-    padding: var(--sp-4);
-  }
+  /* Sections are no longer cards -- just titled groups. */
+  .lane { min-width: 0; }
   .lane-title {
     font-size: var(--fs-sm);
-    margin: 0 0 var(--sp-4);
+    margin: 0 0 var(--sp-3);
     letter-spacing: var(--track-wide);
     text-transform: uppercase;
     color: var(--muted);
@@ -255,7 +255,25 @@
     gap: var(--sp-3);
   }
   .lane-sub { font-size: var(--fs-xs); letter-spacing: .2px; text-transform: none; color: var(--muted); opacity: .7; }
-  .lane-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-4); }
+
+  /* Input + Output share a row above FX; a thin rule divides the two racks. */
+  .io-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6); }
+  .io-row > .lane + .lane { border-left: 1px solid var(--line); padding-left: var(--sp-6); }
+  .rack { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-5); }
+  .rack :global(.pedal:not(:first-child)) { border-left: 1px solid var(--line); padding-left: var(--sp-5); }
+
+  /* FX sits below, separated from the IO row by a rule. */
+  .lane-fx { border-top: 1px solid var(--line); padding-top: var(--sp-5); }
+
+  @media (max-width: 800px) {
+    .io-row { grid-template-columns: 1fr; }
+    .io-row > .lane + .lane {
+      border-left: none;
+      padding-left: 0;
+      border-top: 1px solid var(--line);
+      padding-top: var(--sp-4);
+    }
+  }
 
   /* FX area: the tile grid on the left, the always-visible params column on the
      right (separated by a thin divider). Collapses to a single column when the
