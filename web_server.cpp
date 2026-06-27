@@ -211,6 +211,15 @@ void WebServer::setupRoutes() {
     res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
   });
 
+  // {slot, to}  -- drag-and-drop reorder: move the effect in `slot` to sit
+  // before `to`, repacking the chain (an empty/-1 `to` appends).
+  svr_->Post("/api/fx/reorder", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    chain_.fxReorder(b.value("slot", -1), b.value("to", -1));
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
+  });
+
   // {effect, fs, mode}  -- fs 0..3 (or -1 to clear), mode 0 normal / 1 inverted.
   // Mirrors the device assign page; keeps `enabled` consistent with the binding
   // (footswitches default to engaged, so normal = on, inverted = off).

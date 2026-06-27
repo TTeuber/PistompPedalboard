@@ -10,6 +10,8 @@
   } from './lib/store.svelte.js';
   import type { Effect } from './lib/types.js';
   import Pedal from './lib/Pedal.svelte';
+  import FxTile from './lib/FxTile.svelte';
+  import FxParamsPanel from './lib/FxParamsPanel.svelte';
   import EmptySlot from './lib/EmptySlot.svelte';
   import FootswitchBar from './lib/FootswitchBar.svelte';
   import Sidebar from './lib/Sidebar.svelte';
@@ -35,6 +37,14 @@
     for (const e of board.effects) if (e.section === 'fx') bySlot[e.slot] = e;
     return Array.from({ length: board.fxSlotCount }, (_, s) => bySlot[s] ?? null);
   });
+
+  // Which FX pedal the right-hand panel is editing. Tracked by the stable `type`
+  // id so an SSE state swap (or a removed/reordered pedal) just falls back to the
+  // placeholder rather than leaving a stale reference.
+  let selectedFxType = $state<string | null>(null);
+  const selectedFx = $derived(
+    board.effects.find((e) => e.section === 'fx' && e.type === selectedFxType) ?? null,
+  );
 
   const masterPct = $derived(Math.round(board.master * 100));
   const telem = $derived(`DSP ${(status.dspPermille / 10).toFixed(1)}%  ·  xruns ${status.xruns}`);
@@ -111,16 +121,25 @@
       </section>
 
       <section class="lane lane-fx">
-        <h2 class="lane-title">FX <span class="lane-sub">tap a footswitch · ◀ ▶ to move</span></h2>
-        <FootswitchBar />
-        <div class="fx-grid">
-          {#each grid as fx, slot (fx ? fx.type : `empty-${slot}`)}
-            {#if fx}
-              <Pedal {fx} inGrid />
-            {:else}
-              <EmptySlot {slot} />
-            {/if}
-          {/each}
+        <h2 class="lane-title">FX <span class="lane-sub">tap a footswitch · drag a pedal to reorder</span></h2>
+        <div class="fx-area">
+          <div class="fx-main">
+            <FootswitchBar />
+            <div class="fx-grid">
+              {#each grid as fx, slot (fx ? fx.type : `empty-${slot}`)}
+                {#if fx}
+                  <FxTile
+                    {fx}
+                    selected={fx.type === selectedFxType}
+                    onselect={(t) => (selectedFxType = t)}
+                  />
+                {:else}
+                  <EmptySlot {slot} />
+                {/if}
+              {/each}
+            </div>
+          </div>
+          <FxParamsPanel fx={selectedFx} />
         </div>
       </section>
 
@@ -238,7 +257,29 @@
   .lane-sub { font-size: var(--fs-xs); letter-spacing: .2px; text-transform: none; color: var(--muted); opacity: .7; }
   .lane-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--sp-4); }
 
+  /* FX area: the tile grid on the left, the always-visible params column on the
+     right (separated by a thin divider). Collapses to a single column when the
+     board gets narrow. */
+  .fx-area {
+    display: grid;
+    grid-template-columns: 1fr minmax(260px, 320px);
+    gap: var(--sp-5);
+    align-items: start;
+  }
+  .fx-main { min-width: 0; }
+  .fx-area :global(.panel) { border-left: 1px solid var(--line); padding-left: var(--sp-5); }
+
   /* FX grid: 4 columns, mirrors the device's 4x2 slot layout. */
   .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-4); }
-  @media (max-width: 1200px) { .fx-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  @media (max-width: 1200px) {
+    .fx-area { grid-template-columns: 1fr; }
+    .fx-area :global(.panel) {
+      border-left: none;
+      padding-left: 0;
+      border-top: 1px solid var(--line);
+      padding-top: var(--sp-4);
+    }
+    .fx-grid { grid-template-columns: repeat(2, 1fr); }
+  }
 </style>

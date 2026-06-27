@@ -171,6 +171,38 @@ public:
     commit();
   }
 
+  // Relocate the effect in `fromSlot` to sit just before whatever occupies
+  // `toSlot`, then repack so the chain has no gaps -- the "insert & compact"
+  // drag-and-drop primitive. A `toSlot` that is empty (or out of range) appends
+  // the effect to the end of the chain.
+  void fxReorder(int fromSlot, int toSlot) {
+    std::lock_guard<std::mutex> lk(editMutex_);
+    if (fromSlot < 0 || fromSlot >= kFxSlots || !fxSlots_[(size_t)fromSlot]) return;
+
+    // Pull the occupied slots into signal order, tracking where the dragged
+    // effect and the drop target landed within that compacted sequence.
+    std::vector<std::unique_ptr<Effect>> seq;
+    int fromIdx = -1, toIdx = -1;
+    for (int i = 0; i < kFxSlots; i++) {
+      if (!fxSlots_[(size_t)i]) continue;
+      if (i == fromSlot) fromIdx = (int)seq.size();
+      if (i == toSlot) toIdx = (int)seq.size();
+      seq.push_back(std::move(fxSlots_[(size_t)i]));
+    }
+
+    auto moved = std::move(seq[(size_t)fromIdx]);
+    seq.erase(seq.begin() + fromIdx);
+    // After erasing the source, indices past it shift left by one; an unknown
+    // (empty/out-of-range) target appends.
+    int insert = (toIdx < 0) ? (int)seq.size() : (toIdx > fromIdx ? toIdx - 1 : toIdx);
+    seq.insert(seq.begin() + insert, std::move(moved));
+
+    // Repack into the low slots; null the rest.
+    for (int i = 0; i < kFxSlots; i++)
+      fxSlots_[(size_t)i] = (i < (int)seq.size()) ? std::move(seq[(size_t)i]) : nullptr;
+    commit();
+  }
+
 private:
   // Build a fresh immutable order from the slots and swap it in for the audio
   // thread. First reclaims everything retired by the PREVIOUS edit (provably

@@ -2,12 +2,9 @@
   import { api } from './api.js';
   import { applyState } from './store.svelte.js';
   import type { BoardState, Effect } from './types.js';
+  import { FS_COLORS as COLORS } from './fsColors.js';
 
   let { fx }: { fx: Effect } = $props();
-
-  // FS1..FS4 -- must match the device palette (kFsColors) and the FootswitchBar:
-  // red / green / blue / yellow.
-  const COLORS = ['#ff453a', '#30d158', '#4d96ff', '#ffcc00'];
 
   // Cycle this pedal's binding for one footswitch, exactly like the device's
   // assign page: unassigned (or bound elsewhere) -> normal -> inverted -> clear.

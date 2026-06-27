@@ -2,9 +2,7 @@
   import { api } from './api.js';
   import { board, applyState } from './store.svelte.js';
   import type { BoardState } from './types.js';
-
-  // FS1..FS4 colors -- match the device NeoPixels (kFsColors) and AssignStrip.
-  const COLORS = ['#ff453a', '#30d158', '#4d96ff', '#ffcc00'];
+  import { FS_COLORS as COLORS } from './fsColors.js';
 
   // How many effects each footswitch drives, so an unbound switch reads as inert.
   const counts = $derived(
