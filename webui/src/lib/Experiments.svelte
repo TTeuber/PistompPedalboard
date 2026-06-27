@@ -24,10 +24,27 @@
   let knobVals = $state(jewels.map((_, i) => 0.2 + i * 0.13));
 
   let big = $state(0.5);
+  // Circle-shape variants
+  let c1 = $state(0.5);
+  let c2 = $state(0.5);
+  // Bipolar knobs (rest at centre)
+  let bp1 = $state(0.7);
+  let bp2 = $state(0.3);
+  let bp3 = $state(0.65);
+
   let h1 = $state(0.7);
   let h2 = $state(0.35);
   let v1 = $state(0.6);
   let v2 = $state(0.85);
+  // Bipolar faders (rest at centre)
+  let bh = $state(0.65);
+  let bv = $state(0.4);
+
+  // Bipolar params read as ±, where 0.5 is centre.
+  const bip = (v: number) => {
+    const n = Math.round((v - 0.5) * 200);
+    return `${n > 0 ? '+' : ''}${n}`;
+  };
 
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 </script>
@@ -63,12 +80,58 @@
     </div>
     <div class="row">
       <div class="cell">
-        <Knob bind:value={big} label="Master" size={140} />
+        <Knob bind:value={big} label="Master (360° from bottom)" size={140} />
+        <span class="val">{pct(big)}</span>
+      </div>
+      <div class="cell">
+        <Knob bind:value={big} label="360° from top" size={140} start={-90} sweep={360} />
         <span class="val">{pct(big)}</span>
       </div>
       <div class="cell">
         <Knob bind:value={big} label="270° sweep" size={140} start={-225} sweep={270} />
         <span class="val">{pct(big)}</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Knob — circle shape</h2>
+    <p class="hint">Same wipe, round frame instead of square — compare against above.</p>
+    <div class="row">
+      <div class="cell">
+        <Knob bind:value={c1} label="360° from bottom" size={140} shape="circle" start={90} sweep={360} />
+        <span class="val">{pct(c1)}</span>
+      </div>
+      <div class="cell">
+        <Knob bind:value={c2} label="270° sweep" size={140} shape="circle" start={-225} sweep={270} />
+        <span class="val">{pct(c2)}</span>
+      </div>
+    </div>
+    <div class="row">
+      {#each jewels.slice(0, 4) as j, i}
+        <div class="cell">
+          <Knob bind:value={knobVals[i]} label={j.label} color={j.color} shape="circle" />
+          <span class="val">{pct(knobVals[i])}</span>
+        </div>
+      {/each}
+    </div>
+  </section>
+
+  <section>
+    <h2>Knob — bipolar (centre rest)</h2>
+    <p class="hint">Fill grows out from the top centre toward the value — for ± params. Double-click resets to centre.</p>
+    <div class="row">
+      <div class="cell">
+        <Knob bind:value={bp1} label="360° square" size={140} bipolar start={-270} sweep={360} color="var(--amethyst)" />
+        <span class="val">{bip(bp1)}</span>
+      </div>
+      <div class="cell">
+        <Knob bind:value={bp2} label="360° circle" size={140} bipolar shape="circle" start={-270} sweep={360} color="var(--amethyst)" />
+        <span class="val">{bip(bp2)}</span>
+      </div>
+      <div class="cell">
+        <Knob bind:value={bp3} label="270° circle" size={140} bipolar shape="circle" start={-225} sweep={270} color="var(--teal)" />
+        <span class="val">{bip(bp3)}</span>
       </div>
     </div>
   </section>
@@ -93,6 +156,23 @@
       <div class="cell">
         <Fader bind:value={v2} label="R" vertical color="var(--ruby)" />
         <span class="val">{pct(v2)}</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Fader — bipolar (centre rest)</h2>
+    <p class="hint">Fill grows out from the centre toward the value — for ± params like pan or balance.</p>
+    <div class="row">
+      <div class="cell">
+        <Fader bind:value={bh} label="Pan" bipolar color="var(--amethyst)" />
+        <span class="val">{bip(bh)}</span>
+      </div>
+    </div>
+    <div class="row">
+      <div class="cell">
+        <Fader bind:value={bv} label="Balance" vertical bipolar color="var(--teal)" />
+        <span class="val">{bip(bv)}</span>
       </div>
     </div>
   </section>

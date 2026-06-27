@@ -30,6 +30,7 @@
 #include "effects/eq.h"
 #include "effects/gate.h"
 #include "effects/input_gain.h"
+#include "effects/output_gain.h"
 #include "effects/reverb.h"
 #include "effects/tuner.h"
 #include "fx_factory.h"
@@ -365,6 +366,7 @@ int main(int argc, char **argv) {
   g_chain.add(std::make_unique<fx::AmpNam>(model.get(), ampName))->section =
       Section::Output;
   g_chain.add(std::make_unique<fx::EQ>())->section = Section::Output;
+  g_chain.add(std::make_unique<fx::OutputGain>())->section = Section::Output;
 
   // The FX (middle) region is a fixed grid of slots the user fills at runtime,
   // including duplicates of a kind -- so FX can't be singletons. Register each

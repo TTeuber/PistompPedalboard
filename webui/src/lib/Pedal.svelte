@@ -27,15 +27,20 @@
     ></button>
   </div>
 
-  {#each fx.params as p (p.id)}
-    <ParamControl effectType={fx.type} {p} />
-  {/each}
+  <div class="knobs">
+    {#each fx.params as p (p.id)}
+      <ParamControl effectType={fx.type} {p} knob />
+    {/each}
+  </div>
 </div>
 
 <style>
   .pedal { min-width: 0; transition: opacity var(--t-med); }
   .pedal.off { opacity: .5; }
-  .pedal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+  .pedal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+
+  /* Params sit in one horizontal cluster of knobs under the header. */
+  .knobs { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: flex-start; }
   .pedal-head h3 {
     font-size: var(--fs-sm);
     margin: 0;

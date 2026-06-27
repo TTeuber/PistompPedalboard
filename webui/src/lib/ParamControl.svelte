@@ -1,8 +1,21 @@
 <script lang="ts">
   import { api } from './api.js';
   import type { Param } from './types.js';
+  import Knob from './controls/Knob.svelte';
 
-  let { effectType, p }: { effectType: string; p: Param } = $props();
+  let {
+    effectType,
+    p,
+    knob = false,
+    size = 54,
+    color = 'var(--accent)',
+  }: {
+    effectType: string;
+    p: Param;
+    knob?: boolean;
+    size?: number;
+    color?: string;
+  } = $props();
 
   // A couple of params render as something other than a slider, matching the
   // device: a 0..1 unit-less value is an on/off toggle (e.g. Reverb "Freeze");
@@ -34,13 +47,51 @@
     );
   }
 
+  // The Knob drives its own pointer/scroll/key interaction and only emits values;
+  // it has no drag start/end. So we hold the `editing` guard open while inputs
+  // keep arriving and release it shortly after they stop -- same effect as the
+  // slider's pointer guard, keeping a live SSE echo from fighting the turn.
+  let editTimer: ReturnType<typeof setTimeout>;
+  function knobInput(v: number) {
+    editing = true;
+    clearTimeout(editTimer);
+    editTimer = setTimeout(() => (editing = false), 250);
+    send(v);
+  }
+
   const enumOpts = $derived(ENUMS[p.id]);
   const isToggle = $derived(p.min === 0 && p.max === 1 && !p.unit && !enumOpts);
+  const isKnob = $derived(knob && !isToggle && !enumOpts);
+  // A param that swings either side of zero (e.g. EQ ±dB) rests at centre.
+  const bipolar = $derived(p.min < 0 && p.max > 0);
   const step = $derived(p.max - p.min <= 4 ? 0.01 : 1);
   const fmt = (v: number) =>
     p.unit === '%' ? `${Math.round(v)}%` : p.unit ? `${v.toFixed(2)} ${p.unit}` : v.toFixed(2);
 </script>
 
+{#if isKnob}
+  <div class="knob-cell" class:editing>
+    <Knob
+      value={value}
+      min={p.min}
+      max={p.max}
+      label={p.name}
+      {size}
+      {color}
+      {bipolar}
+      start={-225}
+      sweep={270}
+      oninput={knobInput}
+    />
+    <!-- Name by default, value while hovering/turning (CSS swap). The name keeps
+         the caption's box; the value overlays it. The hidden Knob label still
+         names the control for assistive tech. -->
+    <div class="kcap">
+      <span class="kname">{p.name}</span>
+      <span class="kval">{fmt(value)}</span>
+    </div>
+  </div>
+{:else}
 <div class="param">
   <label>
     {p.name}
@@ -78,8 +129,38 @@
     />
   {/if}
 </div>
+{/if}
 
 <style>
+  /* Knob variant: a caption under the knob that swaps name <-> value on
+     hover/turn (CSS only). The name stays in flow to size the caption; the value
+     overlays it. The Knob's own label is hidden (kept for its aria name). */
+  .knob-cell { display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); }
+  .knob-cell :global(.knob .label) { display: none; }
+  .kcap {
+    position: relative;
+    font-size: var(--fs-xs);
+    letter-spacing: var(--track);
+    white-space: nowrap;
+  }
+  .kname { text-transform: uppercase; color: var(--muted); transition: opacity var(--t-fast); }
+  .kval {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translateX(-50%);
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--t-fast);
+  }
+  /* On hover or while turning, reveal the value and fade out the name. */
+  .knob-cell:hover .kname,
+  .knob-cell.editing .kname { opacity: 0; }
+  .knob-cell:hover .kval,
+  .knob-cell.editing .kval { opacity: 1; }
+
   .param { margin: var(--sp-4) 0; }
   .param label {
     display: flex;

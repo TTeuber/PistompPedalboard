@@ -27,8 +27,8 @@ public:
   AmpNam(nam::DSP* model, std::string displayName)
       : Effect("amp", displayName.empty() ? "Amp" : std::move(displayName)),
         model_(model) {
-    drive_ = addParam("drive", "Input Drive",  "%", 0, 400, 100);
-    level_ = addParam("level", "Output Level", "%", 0, 200, 100);
+    drive_ = addParam("drive", "Input",  "%", 0, 400, 100);
+    level_ = addParam("level", "Output", "%", 0, 200, 100);
   }
 
   void prepare(double sr, int maxBlock) override {

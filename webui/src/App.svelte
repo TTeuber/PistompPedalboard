@@ -113,9 +113,11 @@
     <main class="board">
       <!-- Input + Output ride above FX so the whole board fits without scrolling;
            neither is in a card, just a titled rack of flat strips. -->
-      <div class="io-row">
+      <!-- Left column: Input + Output above FX. The right pedal-controls column
+           rides alongside, full height, so the board fits without scrolling. -->
+      <div class="board-main">
         <section class="lane">
-          <h2 class="lane-title">Input</h2>
+          <!-- <h2 class="lane-title">Input</h2> -->
           <div class="rack">
             {#each inputFx as fx (fx.type)}
               <Pedal {fx} />
@@ -123,8 +125,26 @@
           </div>
         </section>
 
-        <section class="lane">
-          <h2 class="lane-title">Output</h2>
+        <section class="lane lane-fx">
+          <h2 class="lane-title">FX <span class="lane-sub">tap a footswitch · drag a pedal to reorder</span></h2>
+          <FootswitchBar />
+          <div class="fx-grid">
+            {#each grid as fx, slot (fx ? fx.type : `empty-${slot}`)}
+              {#if fx}
+                <FxTile
+                  {fx}
+                  selected={fx.type === selectedFxType}
+                  onselect={(t) => (selectedFxType = t)}
+                />
+              {:else}
+                <EmptySlot {slot} />
+              {/if}
+            {/each}
+          </div>
+        </section>
+
+        <section class="lane lane-out">
+          <!-- <h2 class="lane-title">Output</h2> -->
           <div class="rack">
             {#each outputFx as fx (fx.type)}
               <Pedal {fx} />
@@ -133,28 +153,7 @@
         </section>
       </div>
 
-      <section class="lane lane-fx">
-        <h2 class="lane-title">FX <span class="lane-sub">tap a footswitch · drag a pedal to reorder</span></h2>
-        <div class="fx-area">
-          <div class="fx-main">
-            <FootswitchBar />
-            <div class="fx-grid">
-              {#each grid as fx, slot (fx ? fx.type : `empty-${slot}`)}
-                {#if fx}
-                  <FxTile
-                    {fx}
-                    selected={fx.type === selectedFxType}
-                    onselect={(t) => (selectedFxType = t)}
-                  />
-                {:else}
-                  <EmptySlot {slot} />
-                {/if}
-              {/each}
-            </div>
-          </div>
-          <FxParamsPanel fx={selectedFx} />
-        </div>
-      </section>
+      <FxParamsPanel fx={selectedFx} />
     </main>
   </div>
 </div>
@@ -233,15 +232,20 @@
      collapsed rail's worth of left padding is reserved for it. */
   .shell { position: relative; flex: 1 1 auto; min-height: 0; }
 
+  /* Two columns: the stacked Input/Output/FX on the left, the pedal-controls
+     panel as a full-height column on the right (its divider runs top to bottom).
+     Collapses to one column when the board gets narrow. */
   .board {
     height: 100%;
     overflow-y: auto;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr minmax(260px, 320px);
     gap: var(--sp-5);
     padding: var(--sp-5) var(--sp-6);
     padding-left: calc(46px + var(--sp-5));
   }
+  .board-main { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-5); }
+  .board :global(.panel) { border-left: 1px solid var(--line); padding-left: var(--sp-5); }
   /* Sections are no longer cards -- just titled groups. */
   .lane { min-width: 0; }
   .lane-title {
@@ -256,43 +260,20 @@
   }
   .lane-sub { font-size: var(--fs-xs); letter-spacing: .2px; text-transform: none; color: var(--muted); opacity: .7; }
 
-  /* Input + Output share a row above FX; a thin rule divides the two racks. */
-  .io-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6); }
-  .io-row > .lane + .lane { border-left: 1px solid var(--line); padding-left: var(--sp-6); }
-  .rack { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-5); }
+  /* Each section's effects sit in one wrapping row, divided by thin rules. */
+  .rack { display: flex; flex-wrap: wrap; gap: var(--sp-5); align-items: flex-start; }
   .rack :global(.pedal:not(:first-child)) { border-left: 1px solid var(--line); padding-left: var(--sp-5); }
 
-  /* FX sits below, separated from the IO row by a rule. */
-  .lane-fx { border-top: 1px solid var(--line); padding-top: var(--sp-5); }
-
-  @media (max-width: 800px) {
-    .io-row { grid-template-columns: 1fr; }
-    .io-row > .lane + .lane {
-      border-left: none;
-      padding-left: 0;
-      border-top: 1px solid var(--line);
-      padding-top: var(--sp-4);
-    }
-  }
-
-  /* FX area: the tile grid on the left, the always-visible params column on the
-     right (separated by a thin divider). Collapses to a single column when the
-     board gets narrow. */
-  .fx-area {
-    display: grid;
-    grid-template-columns: 1fr minmax(260px, 320px);
-    gap: var(--sp-5);
-    align-items: start;
-  }
-  .fx-main { min-width: 0; }
-  .fx-area :global(.panel) { border-left: 1px solid var(--line); padding-left: var(--sp-5); }
+  /* Stack order is Input, FX, Output -- each separated from the last by a rule. */
+  .lane-fx,
+  .lane-out { border-top: 1px solid var(--line); padding-top: var(--sp-5); }
 
   /* FX grid: 4 columns, mirrors the device's 4x2 slot layout. */
   .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-4); }
 
-  @media (max-width: 1200px) {
-    .fx-area { grid-template-columns: 1fr; }
-    .fx-area :global(.panel) {
+  @media (max-width: 1100px) {
+    .board { grid-template-columns: 1fr; }
+    .board :global(.panel) {
       border-left: none;
       padding-left: 0;
       border-top: 1px solid var(--line);

@@ -15,7 +15,7 @@ namespace fx {
 
 class InputGain : public Effect {
 public:
-  InputGain() : Effect("input", "Input Level") {
+  InputGain() : Effect("input", "Input") {
     gain_ = addParam("gain", "Gain", "dB", -24, 24, 0);
   }
 

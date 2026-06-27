@@ -1,7 +1,11 @@
 <script lang="ts">
-  // Square knob that "wipes" a fill around its centre as the value rises, with a
-  // tick marking the leading edge (the sketch shape). Pure SVG geometry — no
-  // assets — so it recolours from a single CSS var and scales crisply.
+  // Knob that "wipes" a fill around its centre as the value rises, with a tick
+  // marking the leading edge (the sketch shape). Pure SVG geometry — no assets —
+  // so it recolours from a single CSS var and scales crisply.
+  //
+  // Shapes: 'square' (ray meets the square edge) or 'circle' (ray meets a circle).
+  // Bipolar: the fill grows out from the centre of the sweep toward the value
+  // instead of from the start — for params that swing either side of a neutral.
   //
   // Interaction: drag vertically (Shift = fine), scroll wheel, arrow keys, and
   // double-click to reset. Value is $bindable for easy two-way use.
@@ -12,9 +16,11 @@
     label = '',
     size = 76,
     color = 'var(--accent)',
-    start = -90, // where the fill begins; -90 = top (12 o'clock)
+    start = 90, // where the fill begins; 90 = bottom (6 o'clock), wiping clockwise
     sweep = 360, // total degrees the fill can travel, clockwise
-    resetValue = min,
+    shape = 'square', // 'square' | 'circle'
+    bipolar = false, // fill from the sweep centre outward instead of from start
+    resetValue = bipolar ? min + (max - min) / 2 : min,
     oninput = undefined,
   }: {
     value?: number;
@@ -25,6 +31,8 @@
     color?: string;
     start?: number;
     sweep?: number;
+    shape?: 'square' | 'circle';
+    bipolar?: boolean;
     resetValue?: number;
     oninput?: (v: number) => void;
   } = $props();
@@ -33,24 +41,37 @@
   const span = $derived(max - min || 1);
   const t = $derived(Math.min(1, Math.max(0, (value - min) / span)));
 
-  // Ray from the centre to wherever it meets the square edge, at `deg`.
+  // Ray from the centre to wherever it meets the edge at `deg` — the square's
+  // perimeter, or a circle of radius r.
   function edge(deg: number, c: number, r: number): [number, number] {
     const a = (deg * Math.PI) / 180;
     const dx = Math.cos(a);
     const dy = Math.sin(a);
+    if (shape === 'circle') return [c + dx * r, c + dy * r];
     const m = Math.max(Math.abs(dx), Math.abs(dy));
     return [c + (dx / m) * r, c + (dy / m) * r];
   }
 
-  // The swept wedge as a polygon: centre + perimeter samples from start to the
-  // current leading angle. Straight square edges stay exact between samples.
+  // The swept wedge as a polygon: centre + perimeter samples between the two
+  // bounding angles. Straight square edges stay exact between samples; circle
+  // edges are smooth enough at a 2° step.
   const points = $derived.by(() => {
-    if (t <= 0) return '';
     const half = size / 2;
     const r = half - PAD;
-    const a1 = start + sweep * t;
+    const aCur = start + sweep * t;
+    let a0: number, a1: number;
+    if (bipolar) {
+      const aMid = start + sweep * 0.5;
+      a0 = Math.min(aMid, aCur);
+      a1 = Math.max(aMid, aCur);
+      if (a1 - a0 < 0.5) return ''; // sitting at centre — nothing to fill
+    } else {
+      if (t <= 0) return '';
+      a0 = start;
+      a1 = aCur;
+    }
     const pts = [`${half},${half}`];
-    for (let a = start; a < a1; a += 2) {
+    for (let a = a0; a < a1; a += 2) {
       const [x, y] = edge(a, half, r);
       pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
     }
@@ -64,6 +85,16 @@
     const half = size / 2;
     const [x2, y2] = edge(start + sweep * t, half, half - PAD);
     return { c: half, x2, y2 };
+  });
+
+  // Neutral mark at the sweep centre, so a bipolar knob shows where zero is.
+  const centerMark = $derived.by(() => {
+    if (!bipolar) return null;
+    const half = size / 2;
+    const aMid = start + sweep * 0.5;
+    const [ox, oy] = edge(aMid, half, half - PAD);
+    const [ix, iy] = edge(aMid, half, half - PAD - 7);
+    return { ox, oy, ix, iy };
   });
 
   function set(v: number) {
@@ -113,8 +144,15 @@
   onkeydown={keydown}
 >
   <svg viewBox="0 0 {size} {size}" width={size} height={size}>
-    <rect class="frame" x={PAD} y={PAD} width={size - PAD * 2} height={size - PAD * 2} rx="3" />
+    {#if shape === 'circle'}
+      <circle class="frame" cx={size / 2} cy={size / 2} r={size / 2 - PAD} />
+    {:else}
+      <rect class="frame" x={PAD} y={PAD} width={size - PAD * 2} height={size - PAD * 2} rx="3" />
+    {/if}
     {#if points}<polygon class="fill" {points} />{/if}
+    {#if centerMark}
+      <line class="center" x1={centerMark.ox} y1={centerMark.oy} x2={centerMark.ix} y2={centerMark.iy} />
+    {/if}
     <line class="tick" x1={tick.c} y1={tick.c} x2={tick.x2} y2={tick.y2} />
   </svg>
   {#if label}<span class="label">{label}</span>{/if}
@@ -146,6 +184,7 @@
   .knob:focus-visible .frame { stroke: var(--knob); }
   .fill { fill: var(--knob); }
   .tick { stroke: var(--text); stroke-width: 2; stroke-linecap: round; }
+  .center { stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
   .label {
     font-size: var(--fs-xs);
     letter-spacing: var(--track);
