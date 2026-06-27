@@ -12,7 +12,7 @@
   "effects": {
     "tuner":  { "enabled": false, "params": { "mute": 1, "ref": 440 } },
     "gate":   { "enabled": true,  "params": { "threshold": -52, "release": 120 } },
-    "comp":   { "enabled": true,  "params": { "amount": 55, "makeup": 7 } },
+    "comp":   { "enabled": true,  "params": { "threshold": -22, "ratio": 5, "makeup": 7 } },
     "drive":  { "enabled": true,  "params": { "type": 0, "drive": 55, "tone": 60, "level": 70 } },
     "amp":    { "enabled": true,  "params": { "drive": 150, "level": 95 } },
     "eq":     { "enabled": true,  "params": { "low": -2, "mid": 3, "high": 1 } },

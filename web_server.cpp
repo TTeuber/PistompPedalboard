@@ -11,12 +11,16 @@
 #include "rigs.h"
 #include "presets.h"
 #include "setlists.h"
+#include "effects/comp.h"
+#include "effects/gate.h"
 #include "effects/tuner.h"
 
 #include <httplib.h>
 #include <json.hpp>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -26,6 +30,12 @@
 using nlohmann::json;
 
 namespace {
+
+// Linear peak (0..1) -> dBFS, floored so silence reads a finite meter bottom
+// rather than -inf. The web meters use a -60 dB floor for their scale.
+double dbfs(float peak) {
+  return 20.0 * std::log10(std::max(peak, 1e-3f));  // 1e-3 = -60 dBFS
+}
 
 const char* sectionName(Section s) {
   switch (s) {
@@ -129,6 +139,23 @@ void WebServer::setupRoutes() {
     json t = {{"dspPermille", ctl_.dspPermille.load()},
               {"xruns", ctl_.xruns.load()}};
     res.set_content(t.dump(), "application/json");
+  });
+
+  // Live audio levels for the input/output meters. Like telemetry, these change
+  // every audio block, so they ride a fast poll -- NOT the SSE state stream
+  // (which would re-render the whole board). Every read CLEARS the peak holds so
+  // the meters fall back naturally between polls (and a disabled gate/comp decays
+  // to zero reduction). inputDb/outputDb are dBFS (-60 floor); grDb is the shared
+  // input-section gain reduction: gate + comp summed (the louder channel feeds
+  // the level meters; the signal is mono at this point anyway).
+  svr_->Get("/api/meters", [this](const httplib::Request&, httplib::Response& res) {
+    float inPk  = std::max(ctl_.inPeakWeb[0].exchange(0.0f), ctl_.inPeakWeb[1].exchange(0.0f));
+    float outPk = std::max(ctl_.outPeak[0].exchange(0.0f), ctl_.outPeak[1].exchange(0.0f));
+    float gr = 0.0f;
+    if (auto* g = dynamic_cast<fx::Gate*>(chain_.find("gate"))) gr += g->takeGrDb();
+    if (auto* c = dynamic_cast<fx::Comp*>(chain_.find("comp"))) gr += c->takeGrDb();
+    json m = {{"inputDb", dbfs(inPk)}, {"outputDb", dbfs(outPk)}, {"grDb", gr}};
+    res.set_content(m.dump(), "application/json");
   });
 
   // Live tuner readout. The tuner is a hidden chain effect that publishes pitch

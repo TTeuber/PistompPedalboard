@@ -36,5 +36,14 @@ struct PedalControls {
   // analog ADC detector). See pedalboard/input_vu.h.
   std::atomic<float> inPeak[2]{};
 
+  // Web meter peak-holds, |sample| in [0,1], read-and-cleared by the web layer
+  // (/api/meters). These are SEPARATE from inPeak above on purpose: a peak-hold
+  // has one consumer (whoever clears it steals it), and the device LED meter
+  // already owns inPeak. So the audio thread writes the input peak into BOTH --
+  // inPeak for the device, inPeakWeb for the browser -- so neither starves the
+  // other. outPeak is post-master and web-only.
+  std::atomic<float> inPeakWeb[2]{};
+  std::atomic<float> outPeak[2]{};
+
   std::atomic<bool> running{true};        // false = every domain shuts down
 };

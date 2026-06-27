@@ -14,6 +14,7 @@
 #include "../effect.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 
 namespace fx {
@@ -44,6 +45,7 @@ public:
     const float aAtk = expCoef(2.0f);                 // gain opening
     const float aRel = expCoef(release_->get());      // gain closing
 
+    float minGain = 1.0f;  // smallest gain this block -> most reduction
     for (int i = 0; i < n; i++) {
       // Peak envelope from whichever channel is louder (mono at this point).
       float x = std::max(std::fabs(L[i]), std::fabs(R[i]));
@@ -57,8 +59,23 @@ public:
 
       L[i] *= gain_;
       R[i] *= gain_;
+      minGain = std::min(minGain, gain_);
     }
+
+    // How far the gate pulled the signal down this block, dB (>= 0), for the
+    // shared gain-reduction meter. Peak-held with a lock-free max so the meter
+    // sees the deepest cut since it last read-and-cleared (see web_server.cpp);
+    // a disabled gate never writes, so its held value decays to 0 on next read.
+    float gr = std::clamp(-20.0f * std::log10(std::max(minGain, 1e-6f)),
+                          0.0f, 24.0f);
+    float cur = grDb_.load(std::memory_order_relaxed);
+    while (gr > cur &&
+           !grDb_.compare_exchange_weak(cur, gr, std::memory_order_relaxed)) {}
   }
+
+  // Largest gain reduction (dB) since the last call; reading clears the peak hold
+  // so a disabled gate decays to 0. Called by the web meter (web_server.cpp).
+  float takeGrDb() noexcept { return grDb_.exchange(0.0f, std::memory_order_relaxed); }
 
 private:
   // One-pole smoothing coefficient for a given time constant in milliseconds.
@@ -68,6 +85,7 @@ private:
 
   double sr_ = 48000.0;
   float env_ = 0.0f, gain_ = 0.0f;
+  std::atomic<float> grDb_{0.0f};
   Param *thresh_, *release_;
 };
 

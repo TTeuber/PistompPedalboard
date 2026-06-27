@@ -7,9 +7,12 @@
     refresh,
     connectLive,
     pollTelemetry,
+    pollMeters,
   } from './lib/store.svelte.js';
   import type { Effect } from './lib/types.js';
   import Pedal from './lib/Pedal.svelte';
+  import InputMeters from './lib/InputMeters.svelte';
+  import OutputMeter from './lib/OutputMeter.svelte';
   import FxTile from './lib/FxTile.svelte';
   import FxParamsPanel from './lib/FxParamsPanel.svelte';
   import EmptySlot from './lib/EmptySlot.svelte';
@@ -54,11 +57,13 @@
     loadLists().catch(console.error);
     const es = connectLive();
     const t = setInterval(pollTelemetry, 1000);
+    const m = setInterval(pollMeters, 66); // ~15 Hz: live enough for level meters
     const onHash = () => (route = routeOf());
     window.addEventListener('hashchange', onHash);
     return () => {
       es.close();
       clearInterval(t);
+      clearInterval(m);
       window.removeEventListener('hashchange', onHash);
     };
   });
@@ -122,6 +127,7 @@
             {#each inputFx as fx (fx.type)}
               <Pedal {fx} />
             {/each}
+            <InputMeters />
           </div>
         </section>
 
@@ -149,6 +155,7 @@
             {#each outputFx as fx (fx.type)}
               <Pedal {fx} />
             {/each}
+            <OutputMeter />
           </div>
         </section>
       </div>

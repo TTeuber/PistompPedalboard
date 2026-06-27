@@ -45,6 +45,15 @@ export interface Telemetry {
   xruns: number;
 }
 
+// GET /api/meters -- live audio levels, polled fast (separate from the SSE state
+// stream, like telemetry). dBFS values are floored at -60; grDb is the shared
+// input-section gain reduction (gate + comp summed), in dB.
+export interface Meters {
+  inputDb: number;
+  outputDb: number;
+  grDb: number;
+}
+
 // GET /api/tuner -- live pitch readout, polled while the tuner modal is open.
 export interface TunerReading {
   engaged: boolean;

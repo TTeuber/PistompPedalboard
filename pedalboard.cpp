@@ -266,6 +266,12 @@ static pistomp::AudioCallback makeAudioCallback(double budget_s) {
       while (pk[c] > cur && !g_ctl.inPeak[c].compare_exchange_weak(
                                 cur, pk[c], std::memory_order_relaxed)) {
       }
+      // Mirror into the web's own peak-hold (separate consumer; see
+      // PedalControls). Same lock-free max, independent read-and-clear.
+      float curW = g_ctl.inPeakWeb[c].load(std::memory_order_relaxed);
+      while (pk[c] > curW && !g_ctl.inPeakWeb[c].compare_exchange_weak(
+                                 curW, pk[c], std::memory_order_relaxed)) {
+      }
     }
 
     if (!bypass) {
@@ -280,9 +286,27 @@ static pistomp::AudioCallback makeAudioCallback(double budget_s) {
       g_ctl.dspPermille.store(0, std::memory_order_relaxed);
     }
 
+    float opk[2] = {0.0f, 0.0f};
     for (int f = 0; f < n; f++) {
       out[0][f] = g_L[f] * master;
       out[1][f] = g_R[f] * master;
+      float o0 = out[0][f];
+      if (o0 < 0)
+        o0 = -o0;
+      if (o0 > opk[0])
+        opk[0] = o0;
+      float o1 = out[1][f];
+      if (o1 < 0)
+        o1 = -o1;
+      if (o1 > opk[1])
+        opk[1] = o1;
+    }
+    // Output level peak-hold for the web meter, post-master. UI reads-and-clears.
+    for (int c = 0; c < 2; c++) {
+      float cur = g_ctl.outPeak[c].load(std::memory_order_relaxed);
+      while (opk[c] > cur && !g_ctl.outPeak[c].compare_exchange_weak(
+                                 cur, opk[c], std::memory_order_relaxed)) {
+      }
     }
   };
 }
