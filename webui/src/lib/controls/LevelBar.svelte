@@ -18,6 +18,7 @@
     color = 'var(--ok)',
     fillFrom = 'start',
     markers = [],
+    peak = null,
     height = 22,
   }: {
     value?: number;
@@ -26,6 +27,8 @@
     color?: string;
     fillFrom?: 'start' | 'end';
     markers?: { value: number; color: string; label?: string }[];
+    // Slow-falling peak-hold position (same units as value); null hides it.
+    peak?: number | null;
     height?: number;
   } = $props();
 
@@ -33,6 +36,7 @@
   const pct = (v: number) => Math.min(100, Math.max(0, ((v - min) / span) * 100));
   const fillPct = $derived(pct(value));
   const hasCaptions = $derived(markers.some((m) => m.label));
+  const showPeak = $derived(peak !== null && peak > min);
 </script>
 
 <div class="levelbar">
@@ -45,6 +49,9 @@
     {#each markers as m (m.label ?? m.value)}
       <div class="marker" style="left:{pct(m.value)}%; background:{m.color}"></div>
     {/each}
+    {#if showPeak}
+      <div class="peak" style="left:{pct(peak as number)}%"></div>
+    {/if}
   </div>
   {#if hasCaptions}
     <div class="captions" style="height:24px">
@@ -90,6 +97,19 @@
     width: 2px;
     transform: translateX(-1px);
     border-radius: 1px;
+  }
+  /* Peak-hold indicator: a bright tick that snaps up to new highs and is eased
+     back down slowly by the parent, marking where the level is cresting. */
+  .peak {
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    width: 2px;
+    transform: translateX(-1px);
+    background: var(--text);
+    border-radius: 1px;
+    box-shadow: var(--glow) var(--text);
+    transition: left var(--t-fast) linear;
   }
   .captions { position: relative; margin-top: var(--sp-2); }
   .caption {

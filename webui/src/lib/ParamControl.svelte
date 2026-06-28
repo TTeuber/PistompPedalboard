@@ -41,6 +41,8 @@
   let timer: ReturnType<typeof setTimeout>;
   function send(v: number) {
     value = v;
+    p.value = v; // optimistic: anything deriving from board state (e.g. the input
+    //               meter's gate/comp lines) tracks the knob now, not on the echo
     clearTimeout(timer);
     timer = setTimeout(
       () => api('/api/param', { effect: effectType, param: p.id, value: v }).catch(console.error),

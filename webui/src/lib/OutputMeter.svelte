@@ -4,12 +4,15 @@
   // (input_vu.h: warn -12 dBFS, clip -1 dBFS) so clipping at the output reads red.
   import { meters } from './store.svelte.js';
   import LevelBar from './controls/LevelBar.svelte';
+  import { usePeakHold } from './controls/peakHold.svelte.js';
 
   const FLOOR = -60;
   const levelColor = $derived(
     meters.outputDb >= -1 ? 'var(--danger)' : meters.outputDb >= -12 ? 'var(--warn)' : 'var(--ok)',
   );
   const fmtDb = (v: number) => (v <= FLOOR + 0.5 ? '−∞' : v.toFixed(1));
+
+  const outPeak = usePeakHold(() => meters.outputDb, FLOOR);
 </script>
 
 <div class="meter">
@@ -17,7 +20,7 @@
     <span class="label">Output</span>
     <span class="value">{fmtDb(meters.outputDb)} dB</span>
   </div>
-  <LevelBar value={meters.outputDb} min={FLOOR} max={0} color={levelColor} />
+  <LevelBar value={meters.outputDb} min={FLOOR} max={0} color={levelColor} peak={outPeak.value} />
 </div>
 
 <style>

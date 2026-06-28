@@ -9,8 +9,9 @@
   // from the board state. Pure display -- no controls here.
   import { board, meters } from './store.svelte.js';
   import LevelBar from './controls/LevelBar.svelte';
+  import { usePeakHold } from './controls/peakHold.svelte.js';
 
-  type Marker = { value: number; color: string; label?: string };
+  type Marker = { value: number; color: string };
 
   const FLOOR = -60; // dBFS scale bottom (matches the server's meter floor)
 
@@ -24,15 +25,17 @@
   const gateThresh = $derived(paramOf('gate', 'threshold'));
   const compThresh = $derived(paramOf('comp', 'threshold'));
 
-  // Marker lines, only for pedals that exist. Gate = red, comp = blue (sketch).
+  // Marker lines, only for pedals that exist. Gate = red, comp = blue -- matching
+  // those pedals' knob tints. No captions: the lines read directly off the knobs.
   const markers = $derived.by<Marker[]>(() => {
     const out: Marker[] = [];
-    if (gateThresh !== null)
-      out.push({ value: gateThresh, color: 'var(--danger)', label: 'noise gate' });
-    if (compThresh !== null)
-      out.push({ value: compThresh, color: 'var(--sapphire)', label: 'compressor' });
+    if (gateThresh !== null) out.push({ value: gateThresh, color: 'var(--danger)' });
+    if (compThresh !== null) out.push({ value: compThresh, color: 'var(--sapphire)' });
     return out;
   });
+
+  // Slow-falling peak hold for the input level meter.
+  const inPeak = usePeakHold(() => meters.inputDb, FLOOR);
 
   // Level colour follows the same green/amber/red policy as the device input VU
   // (input_vu.h digitalThresholds: warn -12 dBFS, clip -1 dBFS).
@@ -49,7 +52,7 @@
       <span class="label">Input</span>
       <span class="value">{fmtDb(meters.inputDb)} dB</span>
     </div>
-    <LevelBar value={meters.inputDb} min={FLOOR} max={0} color={levelColor} {markers} />
+    <LevelBar value={meters.inputDb} min={FLOOR} max={0} color={levelColor} {markers} peak={inPeak.value} />
   </div>
 
   <div class="meter">

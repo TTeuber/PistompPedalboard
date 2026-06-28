@@ -5,8 +5,22 @@
   import { api } from './api.js';
   import type { Effect } from './types.js';
   import ParamControl from './ParamControl.svelte';
+  import Switch from './controls/Switch.svelte';
 
   let { fx }: { fx: Effect } = $props();
+
+  // Per-effect knob tint: the gate/comp match their reference lines on the input
+  // meter, amp is emerald, eq is amethyst; the input/output gains stay gold.
+  const KNOB_COLORS: Record<string, string> = {
+    gate: 'var(--danger)',
+    comp: 'var(--sapphire)',
+    amp: 'var(--emerald)',
+    eq: 'var(--amethyst)',
+  };
+  const knobColor = $derived(KNOB_COLORS[fx.type] ?? 'var(--accent)');
+
+  // The input/output gain stages are always on -- no power switch on those.
+  const togglable = $derived(fx.type !== 'input' && fx.type !== 'output');
 
   function togglePower() {
     const on = !fx.enabled;
@@ -15,21 +29,17 @@
   }
 </script>
 
-<div class="pedal" class:off={!fx.enabled}>
+<div class="pedal" class:off={togglable && !fx.enabled}>
   <div class="pedal-head">
     <h3>{fx.name}</h3>
-    <button
-      class="power"
-      class:on={fx.enabled}
-      title="Enable / disable"
-      aria-label="Enable / disable {fx.name}"
-      onclick={togglePower}
-    ></button>
+    {#if togglable}
+      <Switch on={fx.enabled} label="Enable / disable {fx.name}" onclick={togglePower} />
+    {/if}
   </div>
 
   <div class="knobs">
     {#each fx.params as p (p.id)}
-      <ParamControl effectType={fx.type} {p} knob />
+      <ParamControl effectType={fx.type} {p} knob color={knobColor} />
     {/each}
   </div>
 </div>
@@ -48,16 +58,4 @@
     text-transform: uppercase;
     color: var(--accent);
   }
-
-  /* On/off power dot -- same language as the FX tiles. */
-  .power {
-    flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: 2px solid var(--line);
-    background: var(--inset);
-    cursor: pointer;
-  }
-  .power.on { border-color: var(--ok); box-shadow: var(--glow) var(--ok); background: var(--ok); }
 </style>

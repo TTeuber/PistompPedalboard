@@ -4,6 +4,7 @@
   import { FS_COLORS } from './fsColors.js';
   import type { BoardState, Effect } from './types.js';
   import FxIcon from './FxIcon.svelte';
+  import Switch from './controls/Switch.svelte';
 
   let { fx, selected = false, onselect }: {
     fx: Effect;
@@ -64,13 +65,7 @@
     }
   }}
 >
-  <button
-    class="power"
-    class:on={fx.enabled}
-    title="Enable / disable"
-    aria-label="Enable / disable {fx.name}"
-    onclick={togglePower}
-  ></button>
+  <Switch vertical on={fx.enabled} label="Enable / disable {fx.name}" onclick={togglePower} />
   <span class="icon"><FxIcon {kind} color={iconColor} /></span>
   <span class="name">{fx.name}</span>
 </div>
@@ -107,16 +102,4 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
-  /* On/off power dot -- same language as the input/output pedals. */
-  .power {
-    flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: 2px solid var(--line);
-    background: var(--inset);
-    cursor: pointer;
-  }
-  .power.on { border-color: var(--ok); box-shadow: var(--glow) var(--ok); background: var(--ok); }
 </style>
