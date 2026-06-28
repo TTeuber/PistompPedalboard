@@ -47,6 +47,18 @@ export async function loadPedalPresetNames(effectType: string): Promise<void> {
   }
 }
 
+// Fetch (and cache) preset names for a base KIND directly -- used by the
+// add-effect picker, which needs a kind's presets before any instance is placed.
+export async function loadPedalPresetNamesByKind(kind: string): Promise<string[]> {
+  try {
+    const r = await api<PedalPresetList>(`/api/pedal-presets?kind=${encodeURIComponent(kind)}`);
+    pedalPresets[r.kind] = r.names;
+    return r.names;
+  } catch {
+    return [];
+  }
+}
+
 // Fold a (possibly partial) full-state document into the store, field by field,
 // so the proxy tracks each change and any future server-added keys are ignored.
 export function applyState(s: Partial<BoardState> | null): void {

@@ -2,6 +2,7 @@
   import { api } from './api.js';
   import type { Param } from './types.js';
   import Knob from './controls/Knob.svelte';
+  import Fader from './controls/Fader.svelte';
 
   let {
     effectType,
@@ -47,12 +48,12 @@
     );
   }
 
-  // The Knob drives its own pointer/scroll/key interaction and only emits values;
-  // it has no drag start/end. So we hold the `editing` guard open while inputs
-  // keep arriving and release it shortly after they stop -- same effect as the
-  // slider's pointer guard, keeping a live SSE echo from fighting the turn.
+  // The Knob and Fader drive their own pointer/scroll/key interaction and only
+  // emit values -- no drag start/end. So we hold the `editing` guard open while
+  // inputs keep arriving and release it shortly after they stop, keeping a live
+  // SSE echo from fighting the turn.
   let editTimer: ReturnType<typeof setTimeout>;
-  function knobInput(v: number) {
+  function liveInput(v: number) {
     editing = true;
     clearTimeout(editTimer);
     editTimer = setTimeout(() => (editing = false), 250);
@@ -64,7 +65,6 @@
   const isKnob = $derived(knob && !isToggle && !enumOpts);
   // A param that swings either side of zero (e.g. EQ ±dB) rests at centre.
   const bipolar = $derived(p.min < 0 && p.max > 0);
-  const step = $derived(p.max - p.min <= 4 ? 0.01 : 1);
   const fmt = (v: number) =>
     p.unit === '%' ? `${Math.round(v)}%` : p.unit ? `${v.toFixed(2)} ${p.unit}` : v.toFixed(2);
 </script>
@@ -81,7 +81,7 @@
       {bipolar}
       start={-225}
       sweep={270}
-      oninput={knobInput}
+      oninput={liveInput}
     />
     <!-- Name by default, value while hovering/turning (CSS swap). The name keeps
          the caption's box; the value overlays it. The hidden Knob label still
@@ -113,20 +113,7 @@
       {/each}
     </select>
   {:else}
-    <input
-      type="range"
-      min={p.min}
-      max={p.max}
-      {step}
-      {value}
-      oninput={(e) => send(+e.currentTarget.value)}
-      onpointerdown={() => (editing = true)}
-      onpointerup={() => (editing = false)}
-      onpointercancel={() => (editing = false)}
-      onkeydown={() => (editing = true)}
-      onkeyup={() => (editing = false)}
-      onblur={() => (editing = false)}
-    />
+    <Fader value={value} min={p.min} max={p.max} {bipolar} {color} full oninput={liveInput} />
   {/if}
 </div>
 {/if}
@@ -170,7 +157,6 @@
     margin-bottom: var(--sp-2);
   }
   .param output { color: var(--text); font-variant-numeric: tabular-nums; }
-  .param input[type=range] { width: 100%; }
   .param select {
     width: 100%;
     background: var(--panel-2);

@@ -29,13 +29,14 @@
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
   }
 
-  // Drop the dragged effect just before this one; the server repacks the chain.
+  // Drop the dragged effect onto this one: they swap cells. Free-form, so the
+  // grid keeps its exact positions and any gaps (the server doesn't repack).
   async function onDrop(e: DragEvent) {
     e.preventDefault();
     dragOver = false;
     const from = Number(e.dataTransfer?.getData('text/plain'));
     if (!Number.isInteger(from) || from === fx.slot) return;
-    applyState(await api<BoardState>('/api/fx/reorder', { slot: from, to: fx.slot }));
+    applyState(await api<BoardState>('/api/fx/moveto', { slot: from, to: fx.slot }));
   }
 </script>
 

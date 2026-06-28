@@ -210,7 +210,9 @@ void WebServer::setupRoutes() {
   // All three return the full state so the browser re-renders the grid exactly
   // as the chain now is. Chain edit methods are internally synchronized.
 
-  // {slot, kind}  -- kind = index into fxKinds; mints a fresh instance.
+  // {slot, kind, preset?}  -- kind = index into fxKinds; mints a fresh instance.
+  // An optional `preset` name voices the new pedal from a saved knob snapshot for
+  // its kind, so the picker can place + voice in one atomic step.
   svr_->Post("/api/fx/add", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
@@ -219,6 +221,10 @@ void WebServer::setupRoutes() {
     auto fx = factory_.create(kind);
     if (slot < 0 || slot >= Chain::kFxSlots || !fx) { res.status = 400; return; }
     chain_.fxPlace(slot, std::move(fx));
+    std::string preset = b.value("preset", std::string{});
+    if (!preset.empty())
+      if (Effect* placed = chain_.fxAt(slot))
+        presets::load(presetDir_, fxBaseKind(placed->type_id()), preset, *placed);
     res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
   });
 
@@ -244,6 +250,16 @@ void WebServer::setupRoutes() {
     json b;
     if (!parseBody(req, res, b)) return;
     chain_.fxReorder(b.value("slot", -1), b.value("to", -1));
+    res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
+  });
+
+  // {slot, to}  -- free-form drag-and-drop: drop `slot` onto `to`, preserving
+  // exact cell positions (move into an empty cell, swap with an occupied one).
+  // Unlike /reorder this never repacks, so the grid keeps the user's gaps.
+  svr_->Post("/api/fx/moveto", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    chain_.fxMoveTo(b.value("slot", -1), b.value("to", -1));
     res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
   });
 
@@ -362,10 +378,15 @@ void WebServer::setupRoutes() {
   // act on the one named effect; load returns full state so the knobs update.
 
   // ?effect=<type_id>  -> { kind, names:[...] }
+  // Or ?kind=<base_kind> to list a kind directly (used by the add-effect picker,
+  // which needs presets for a kind that isn't placed on the board yet).
   svr_->Get("/api/pedal-presets", [this](const httplib::Request& req, httplib::Response& res) {
-    Effect* fx = chain_.find(req.get_param_value("effect"));
-    if (!fx) { res.status = 404; return; }
-    std::string kind = fxBaseKind(fx->type_id());
+    std::string kind = req.get_param_value("kind");
+    if (kind.empty()) {
+      Effect* fx = chain_.find(req.get_param_value("effect"));
+      if (!fx) { res.status = 404; return; }
+      kind = fxBaseKind(fx->type_id());
+    }
     json out = {{"kind", kind}, {"names", presets::list(presetDir_, kind)}};
     res.set_content(out.dump(), "application/json");
   });

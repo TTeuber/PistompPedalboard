@@ -171,6 +171,21 @@ public:
     commit();
   }
 
+  // Free-form drag-and-drop: drop the effect from `fromSlot` onto `toSlot`,
+  // keeping every effect at its exact cell so the grid can have gaps. If the
+  // target is empty the effect simply moves there (vacating its old cell); if
+  // occupied, the two swap. No repacking -- positions are preserved as the user
+  // arranged them. Signal flows in slot-index order, skipping the empty cells.
+  void fxMoveTo(int fromSlot, int toSlot) {
+    if (fromSlot < 0 || fromSlot >= kFxSlots ||
+        toSlot < 0 || toSlot >= kFxSlots || fromSlot == toSlot)
+      return;
+    std::lock_guard<std::mutex> lk(editMutex_);
+    if (!fxSlots_[(size_t)fromSlot]) return;        // nothing to move
+    std::swap(fxSlots_[(size_t)fromSlot], fxSlots_[(size_t)toSlot]);
+    commit();
+  }
+
   // Relocate the effect in `fromSlot` to sit just before whatever occupies
   // `toSlot`, then repack so the chain has no gaps -- the "insert & compact"
   // drag-and-drop primitive. A `toSlot` that is empty (or out of range) appends

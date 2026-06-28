@@ -1,34 +1,29 @@
 <script lang="ts">
   import { api } from './api.js';
-  import { board, applyState } from './store.svelte.js';
+  import { applyState } from './store.svelte.js';
   import type { BoardState } from './types.js';
 
-  let { slot }: { slot: number } = $props();
+  let { slot, onadd }: { slot: number; onadd: (slot: number) => void } = $props();
 
   let dragOver = $state(false);
 
-  async function add(e: Event & { currentTarget: HTMLSelectElement }) {
-    const v = e.currentTarget.value;
-    if (v === '') return;
-    applyState(await api<BoardState>('/api/fx/add', { slot, kind: +v }));
-    e.currentTarget.value = ''; // reset the picker
-  }
-
-  // Dropping a dragged pedal onto an empty cell appends it to the end of the
-  // chain (the server treats an empty target slot as "append" and repacks).
+  // Dropping a dragged pedal onto an empty cell moves it into THIS exact cell
+  // (free-form positioning -- the server preserves gaps, no repacking).
   async function onDrop(e: DragEvent) {
     e.preventDefault();
     dragOver = false;
     const from = Number(e.dataTransfer?.getData('text/plain'));
     if (!Number.isInteger(from)) return;
-    applyState(await api<BoardState>('/api/fx/reorder', { slot: from, to: slot }));
+    applyState(await api<BoardState>('/api/fx/moveto', { slot: from, to: slot }));
   }
 </script>
 
-<div
+<button
   class="slot-empty"
   class:drag-over={dragOver}
-  role="presentation"
+  title="Add an effect here"
+  aria-label="Add an effect to slot {slot + 1}"
+  onclick={() => onadd(slot)}
   ondragover={(e) => {
     e.preventDefault();
     dragOver = true;
@@ -36,16 +31,12 @@
   ondragleave={() => (dragOver = false)}
   ondrop={onDrop}
 >
-  <select onchange={add}>
-    <option value="">+ add effect</option>
-    {#each board.fxKinds as k, i}
-      <option value={i}>{k.name}</option>
-    {/each}
-  </select>
-</div>
+  <span class="plus">+</span>
+</button>
 
 <style>
   .slot-empty {
+    width: 100%;
     border: 1px dashed var(--line);
     border-radius: var(--r-lg);
     background: var(--inset);
@@ -54,17 +45,11 @@
     align-items: center;
     justify-content: center;
     padding: var(--sp-3);
-    transition: border-color var(--t-fast), background var(--t-fast);
-  }
-  .slot-empty.drag-over { border-color: var(--accent); background: var(--panel-2); }
-  .slot-empty select {
-    width: 100%;
-    background: var(--panel-2);
-    color: var(--muted);
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    padding: var(--sp-3);
     cursor: pointer;
+    color: var(--muted);
+    transition: border-color var(--t-fast), background var(--t-fast), color var(--t-fast);
   }
-  .slot-empty select:hover { border-color: var(--accent); color: var(--text); }
+  .slot-empty:hover { border-color: var(--accent); color: var(--accent); }
+  .slot-empty.drag-over { border-color: var(--accent); background: var(--panel-2); }
+  .plus { font-size: 24px; line-height: 1; font-weight: 300; }
 </style>

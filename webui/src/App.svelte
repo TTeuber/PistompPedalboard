@@ -24,8 +24,11 @@
   import TunerModal from './lib/TunerModal.svelte';
   import SetlistEditor from './lib/SetlistEditor.svelte';
   import Experiments from './lib/Experiments.svelte';
+  import AddFxModal from './lib/AddFxModal.svelte';
 
   let tunerOpen = $state(false);
+  // The FX slot the add-effect modal will fill, or null when it's closed.
+  let addSlot = $state<number | null>(null);
 
   // Tiny hash router: #experiments swaps in the component sandbox, no library.
   const routeOf = () => location.hash.replace(/^#\/?/, '');
@@ -40,6 +43,8 @@
     for (const e of board.effects) if (e.section === 'fx') bySlot[e.slot] = e;
     return Array.from({ length: board.fxSlotCount }, (_, s) => bySlot[s] ?? null);
   });
+  // First empty cell, for the header's "Add effect" button (-1 = board is full).
+  const firstEmptySlot = $derived(grid.findIndex((fx) => fx === null));
 
   // Which FX pedal the right-hand panel is editing. Tracked by the stable `type`
   // id so an SSE state swap (or a removed/reordered pedal) just falls back to the
@@ -132,7 +137,15 @@
         </section>
 
         <section class="lane lane-fx">
-          <h2 class="lane-title">FX <span class="lane-sub">tap a footswitch · drag a pedal to reorder</span></h2>
+          <h2 class="lane-title">
+            FX <span class="lane-sub">tap a footswitch · drag a pedal to any cell</span>
+            <button
+              class="add-fx"
+              disabled={firstEmptySlot < 0}
+              title={firstEmptySlot < 0 ? 'All FX slots are full' : 'Add an effect'}
+              onclick={() => (addSlot = firstEmptySlot)}
+            >+ Add effect</button>
+          </h2>
           <FootswitchBar />
           <div class="fx-grid">
             {#each grid as fx, slot (fx ? fx.type : `empty-${slot}`)}
@@ -143,7 +156,7 @@
                   onselect={(t) => (selectedFxType = t)}
                 />
               {:else}
-                <EmptySlot {slot} />
+                <EmptySlot {slot} onadd={(s) => (addSlot = s)} />
               {/if}
             {/each}
           </div>
@@ -167,6 +180,9 @@
 
 {#if tunerOpen}
   <TunerModal onclose={() => (tunerOpen = false)} />
+{/if}
+{#if addSlot !== null}
+  <AddFxModal slot={addSlot} onclose={() => (addSlot = null)} />
 {/if}
 {/if}
 
@@ -266,6 +282,24 @@
     gap: var(--sp-3);
   }
   .lane-sub { font-size: var(--fs-xs); letter-spacing: .2px; text-transform: none; color: var(--muted); opacity: .7; }
+
+  /* "Add effect" sits at the right end of the FX lane title. */
+  .add-fx {
+    margin-left: auto;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: var(--sp-2) var(--sp-3);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    letter-spacing: var(--track);
+    text-transform: none;
+    cursor: pointer;
+    transition: border-color var(--t-fast), color var(--t-fast);
+  }
+  .add-fx:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .add-fx:disabled { opacity: .4; cursor: default; }
 
   /* Each section's effects sit in one wrapping row, divided by thin rules. */
   .rack { display: flex; flex-wrap: wrap; gap: var(--sp-5); align-items: flex-start; }

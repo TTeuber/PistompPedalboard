@@ -1,9 +1,14 @@
 <script lang="ts">
   // Rectangle that fills from one end to the other (the sketch). SVG, no assets,
-  // recolours from one CSS var. Click anywhere to jump; drag to scrub.
+  // recolours from one CSS var. Drag to change BY the drag amount (like the knob,
+  // not jump-to-cursor): dragging the full track length covers the full range,
+  // up / right increases, Shift = fine. Arrow keys nudge.
   //
   // Bipolar: the fill grows out from the track centre toward the value instead of
   // from one end — for params that swing either side of a neutral.
+  //
+  // `full`: stretch a horizontal fader to fill its container's width (used in the
+  // FX params panel where the old sliders were full-width).
   let {
     value = $bindable(0),
     min = 0,
@@ -14,6 +19,7 @@
     thickness = 26,
     color = 'var(--accent)',
     bipolar = false,
+    full = false,
     oninput = undefined,
   }: {
     value?: number;
@@ -25,6 +31,7 @@
     thickness?: number;
     color?: string;
     bipolar?: boolean;
+    full?: boolean;
     oninput?: (v: number) => void;
   } = $props();
 
@@ -68,19 +75,24 @@
     oninput?.(value);
   }
 
+  // Relative dragging: track the pointer delta and move the value by that
+  // fraction of the track length — same feel as the knob, not jump-to-cursor.
   let dragging = $state(false);
-  function fromPointer(e: PointerEvent) {
-    const r = (e.currentTarget as Element).getBoundingClientRect();
-    const f = vertical ? 1 - (e.clientY - r.top) / r.height : (e.clientX - r.left) / r.width;
-    set(min + Math.min(1, Math.max(0, f)) * span);
-  }
+  let lastPos = 0;
   function down(e: PointerEvent) {
     dragging = true;
+    lastPos = vertical ? e.clientY : e.clientX;
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    fromPointer(e);
   }
   function move(e: PointerEvent) {
-    if (dragging) fromPointer(e);
+    if (!dragging) return;
+    const r = (e.currentTarget as Element).getBoundingClientRect();
+    const len = (vertical ? r.height : r.width) || 1;
+    const pos = vertical ? e.clientY : e.clientX;
+    const d = pos - lastPos;
+    lastPos = pos;
+    // Up (vertical) / right (horizontal) increases; full length ≈ full range.
+    set(value + ((vertical ? -d : d) / len) * span * (e.shiftKey ? 0.25 : 1));
   }
   function up() {
     dragging = false;
@@ -94,13 +106,15 @@
   }
 </script>
 
-<div class="fader" class:vertical>
+<div class="fader" class:vertical class:full={full && !vertical}>
   {#if label}<span class="label">{label}</span>{/if}
   <svg
-    width={w}
+    width={full && !vertical ? '100%' : w}
     height={h}
     viewBox="0 0 {w} {h}"
+    preserveAspectRatio={full && !vertical ? 'none' : 'xMidYMid meet'}
     class="track"
+    class:vertical
     style="--fill:{color}"
     role="slider"
     tabindex="0"
@@ -126,7 +140,10 @@
 <style>
   .fader { display: inline-flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; }
   .fader.vertical { align-items: center; }
-  .track { cursor: pointer; touch-action: none; display: block; }
+  .fader.full { display: flex; width: 100%; }
+  .track { cursor: ew-resize; touch-action: none; display: block; }
+  .track.vertical { cursor: ns-resize; }
+  .fader.full .track { width: 100%; }
   .frame { fill: var(--inset); stroke: var(--line); stroke-width: 2; }
   .bar { fill: var(--fill); }
   .center { stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; }
