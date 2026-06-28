@@ -75,16 +75,16 @@ int main(int argc, char** argv) {
     for (int i = 0; i < frames; i++) {
       double env = std::exp(-((n + i) % (int)sr) / (sr * 0.4));  // re-pluck each sec
       rng = rng * 1664525u + 1013904223u;
-      float noise = ((int)(rng >> 9) / 4194304.0f - 1.0f) * 0.02f;
+      float noise = ((float)(int)(rng >> 9) / 4194304.0f - 1.0f) * 0.02f;
       float x = (float)(std::sin(phase) * 0.5 * env) + noise;
       phase += dphi;
-      L[i] = x; R[i] = x;
+      L[(size_t)i] = x; R[(size_t)i] = x;
     }
     chain.process(L.data(), R.data(), frames);
     for (int i = 0; i < frames; i++) {
-      double a = std::fabs(L[i]);
+      double a = std::fabs(L[(size_t)i]);
       if (a > peak) peak = a;
-      sumsq += (double)L[i] * L[i];
+      sumsq += (double)L[(size_t)i] * L[(size_t)i];
     }
     processed += frames;
   }
@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
 
   double wall = std::chrono::duration<double>(t1 - t0).count();
   double rtf = seconds / wall;
-  double rms = std::sqrt(sumsq / processed);
+  double rms = std::sqrt(sumsq / (double)processed);
   printf("Processed %.1f s of audio in %.3f s wall  ->  RTF %.2fx %s\n",
          seconds, wall, rtf, rtf > 1.0 ? "(realtime OK)" : "(TOO SLOW)");
   printf("Output: peak %.3f, rms %.3f\n", peak, rms);

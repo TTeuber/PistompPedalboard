@@ -135,14 +135,14 @@ void UiController::moveFocus(int dir) {
 void UiController::applyFocus() {
   for (int i = 0; i < (int)items_.size(); i++) {
     bool f = (i == focus_);
-    lv_obj_set_style_border_color(items_[i].obj, f ? kCyan : kBorder, 0);
-    lv_obj_set_style_border_width(items_[i].obj, f ? 2 : 1, 0);
+    lv_obj_set_style_border_color(items_[(size_t)i].obj, f ? kCyan : kBorder, 0);
+    lv_obj_set_style_border_width(items_[(size_t)i].obj, f ? 2 : 1, 0);
   }
 }
 
 void UiController::select() {
   if (focus_ < 0 || focus_ >= (int)items_.size()) return;
-  FocusItem it = items_[focus_];
+  FocusItem it = items_[(size_t)focus_];
   switch (it.action) {
     case ActBack:        back(); break;
     case ActGotoInput:   goTo(InputList); break;
@@ -173,7 +173,7 @@ void UiController::select() {
       break;
     case ActLoadRig:
       if (it.idx >= 0 && it.idx < (int)rigNames_.size())
-        rigs::load(rigDir_, rigNames_[it.idx], chain_, ctl_, factory_);
+        rigs::load(rigDir_, rigNames_[(size_t)it.idx], chain_, ctl_, factory_);
       break;
     case ActParamBank:
       if (current_) {
@@ -214,7 +214,7 @@ void UiController::onKnob(int which, int dir) {
   // adjusts master via the fallback below).
   if (page_ == FxGrid && which == 0 &&
       focus_ >= 0 && focus_ < (int)items_.size()) {
-    FocusItem& it = items_[focus_];
+    FocusItem& it = items_[(size_t)focus_];
     if (it.action == ActOpenEffect && it.fx) {
       int from = it.idx;
       int to = from + (dir < 0 ? -1 : 1);
@@ -223,8 +223,8 @@ void UiController::onKnob(int which, int dir) {
       rebuild();
       // follow the pedal to its new slot (a tile's idx is its slot index)
       for (int i = 0; i < (int)items_.size(); i++)
-        if (items_[i].obj && items_[i].idx == to &&
-            (items_[i].action == ActOpenEffect || items_[i].action == ActOpenPicker)) {
+        if (items_[(size_t)i].obj && items_[(size_t)i].idx == to &&
+            (items_[(size_t)i].action == ActOpenEffect || items_[(size_t)i].action == ActOpenPicker)) {
           focus_ = i;
           break;
         }
@@ -241,18 +241,19 @@ void UiController::onKnob(int which, int dir) {
 }
 
 void UiController::adjustMaster(int dir) {
-  float m = ctl_.masterLevel.load() + dir * kMasterStep;
+  float m = ctl_.masterLevel.load() + (float)dir * kMasterStep;
   ctl_.masterLevel.store(std::clamp(m, 0.0f, kMasterMax));
 }
 
 void UiController::stepParam(Effect* fx, int paramIdx, int dir) {
-  Param* p = fx->params[paramIdx].get();
+  Param* p = fx->params[(size_t)paramIdx].get();
   float range = p->max - p->min;
   float v = p->get();
+  auto integral = [](float x) { return std::fabs(x - std::round(x)) < 1e-6f; };
   bool enumLike = p->unit.empty() && range >= 1.0f && range <= 3.0f &&
-                  p->min == std::floor(p->min) && p->max == std::floor(p->max);
-  if (enumLike)         v = std::round(v) + dir;
-  else if (range > 0)   v += dir * (range / 50.0f);
+                  integral(p->min) && integral(p->max);
+  if (enumLike)         v = std::round(v) + (float)dir;
+  else if (range > 0)   v += (float)dir * (range / 50.0f);
   p->set(v);   // clamps internally
 }
 
@@ -478,7 +479,7 @@ void UiController::buildMenu() {
   rigNames_ = rigs::list(rigDir_);
   for (int i = 0; i < (int)rigNames_.size(); i++) {
     addRow(scr, row++, ActLoadRig, nullptr, i);
-    std::string s = "Rig: " + rigNames_[i];
+    std::string s = "Rig: " + rigNames_[(size_t)i];
     lv_label_set_text(items_.back().lbl, s.c_str());
   }
 }
@@ -508,7 +509,7 @@ void UiController::buildPedalControl() {
   for (int k = 0; k < 3; k++) {
     int pi = paramBase_ + k;
     if (pi >= total) break;
-    Param* p = current_->params[pi].get();
+    Param* p = current_->params[(size_t)pi].get();
     int y = 74 + k * 44;
 
     lv_obj_t* nm = lv_label_create(scr);
@@ -620,12 +621,12 @@ void UiController::handle(const UiEvent& e) {
 void UiController::onFootswitch(int fs) {
   if (fs < 0 || fs > 3) return;
   if (page_ == AssignPage) {
-    if (focus_ >= 0 && focus_ < (int)items_.size() && items_[focus_].fx) {
-      int slot = items_[focus_].idx;
-      cycleAssign(items_[focus_].fx, fs);
+    if (focus_ >= 0 && focus_ < (int)items_.size() && items_[(size_t)focus_].fx) {
+      int slot = items_[(size_t)focus_].idx;
+      cycleAssign(items_[(size_t)focus_].fx, fs);
       rebuild();                       // refresh the tile's color/chip
       for (int i = 0; i < (int)items_.size(); i++)
-        if (items_[i].idx == slot && items_[i].fx) { focus_ = i; break; }
+        if (items_[(size_t)i].idx == slot && items_[(size_t)i].fx) { focus_ = i; break; }
       applyFocus();
     }
     return;
@@ -793,7 +794,7 @@ void UiController::refresh() {
         for (int k = 0; k < 3; k++) {
           int pi = paramBase_ + k;
           if (pi >= total || !ctlVal_[k]) continue;
-          Param* p = current_->params[pi].get();
+          Param* p = current_->params[(size_t)pi].get();
           char vb[32];
           fmtParam(vb, sizeof vb, p);
           lv_label_set_text(ctlVal_[k], vb);
