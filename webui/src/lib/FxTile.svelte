@@ -71,8 +71,9 @@
 </div>
 
 <style>
-  /* Flat tile -- no card chrome; a thin border separates it, the accent rail
-     marks selection. */
+  /* Filled tile -- a resting fill lifts it clear of the page so an unselected
+     pedal still reads as an object; the accent border + rail + brighter fill
+     mark selection. */
   .tile {
     display: flex;
     align-items: center;
@@ -81,13 +82,13 @@
     min-height: 78px;
     border: 1px solid var(--line);
     border-radius: var(--r-md);
-    background: transparent;
+    background: var(--panel);
     cursor: pointer;
     transition: border-color var(--t-fast), background var(--t-fast), opacity var(--t-med);
   }
   .tile:hover { border-color: var(--accent); }
   .tile.off { opacity: .5; }
-  .tile.selected { border-color: var(--accent); background: var(--panel-2); }
+  .tile.selected { border-color: var(--accent); background: var(--panel-2); box-shadow: inset 3px 0 0 var(--accent); }
   .tile.drag-over { border-color: var(--accent); border-style: dashed; }
 
   .icon { flex: 0 0 auto; display: flex; line-height: 0; }

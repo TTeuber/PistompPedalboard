@@ -37,7 +37,7 @@
 <style>
   .slot-empty {
     width: 100%;
-    border: 1px dashed var(--line);
+    border: 1px dashed var(--line-2);
     border-radius: var(--r-lg);
     background: var(--inset);
     min-height: 78px;

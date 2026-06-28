@@ -42,8 +42,8 @@ public:
     minLag_ = (int)(sr_ / kMaxHz);   // shortest period we look for (high notes)
     maxLag_ = (int)(sr_ / kMinHz);   // longest period (low notes)
     if (maxLag_ > kWindow - 64) maxLag_ = kWindow - 64;
-    diff_.assign(maxLag_ + 1, 0.0);
-    cmnd_.assign(maxLag_ + 1, 0.0);
+    diff_.assign((size_t)(maxLag_ + 1), 0.0);
+    cmnd_.assign((size_t)(maxLag_ + 1), 0.0);
     wpos_.store(0, std::memory_order_relaxed);
     clear();
   }
@@ -75,17 +75,17 @@ public:
     // Snapshot the most recent window (oldest -> newest). A few boundary samples
     // may race with the audio thread; harmless for pitch (we re-run continuously).
     for (int i = 0; i < kWindow; i++)
-      buf_[i] = ring_[(w - (uint32_t)kWindow + (uint32_t)i) & kMask];
+      buf_[(size_t)i] = ring_[(w - (uint32_t)kWindow + (uint32_t)i) & kMask];
 
     // Silence gate: don't chase noise when nothing is playing.
     double sumsq = 0.0;
-    for (int i = 0; i < kWindow; i++) sumsq += (double)buf_[i] * buf_[i];
+    for (int i = 0; i < kWindow; i++) sumsq += (double)buf_[(size_t)i] * buf_[(size_t)i];
     if (std::sqrt(sumsq / kWindow) < 2e-3) { clear(); return; }
 
     // Gentle low-pass tames the bright upper harmonics of an electric guitar so
     // YIN locks to the fundamental instead of an overtone.
     OnePole lp; lp.setCutoff(1200.0, sr_); lp.reset();
-    for (int i = 0; i < kWindow; i++) buf_[i] = lp.process(buf_[i]);
+    for (int i = 0; i < kWindow; i++) buf_[(size_t)i] = lp.process(buf_[(size_t)i]);
 
     // --- YIN: difference function over the window, then cumulative-mean-normalise.
     const int W = kWindow - maxLag_;
@@ -93,30 +93,30 @@ public:
     for (int tau = 1; tau <= maxLag_; tau++) {
       double d = 0.0;
       for (int j = 0; j < W; j++) {
-        double dv = (double)buf_[j] - (double)buf_[j + tau];
+        double dv = (double)buf_[(size_t)j] - (double)buf_[(size_t)(j + tau)];
         d += dv * dv;
       }
-      diff_[tau] = d;
+      diff_[(size_t)tau] = d;
     }
     cmnd_[0] = 1.0;
     double running = 0.0;
     for (int tau = 1; tau <= maxLag_; tau++) {
-      running += diff_[tau];
-      cmnd_[tau] = running > 0.0 ? diff_[tau] * tau / running : 1.0;
+      running += diff_[(size_t)tau];
+      cmnd_[(size_t)tau] = running > 0.0 ? diff_[(size_t)tau] * tau / running : 1.0;
     }
 
     // First dip below the absolute threshold (octave-safe); else the global min.
     int tau = -1;
     for (int t = minLag_; t < maxLag_; t++) {
-      if (cmnd_[t] < kYinThresh) {
-        while (t + 1 <= maxLag_ && cmnd_[t + 1] < cmnd_[t]) t++;  // descend to the dip
+      if (cmnd_[(size_t)t] < kYinThresh) {
+        while (t + 1 <= maxLag_ && cmnd_[(size_t)(t + 1)] < cmnd_[(size_t)t]) t++;  // descend to the dip
         tau = t; break;
       }
     }
     if (tau < 0) {
       double best = 1e9; int bt = -1;
       for (int t = minLag_; t <= maxLag_; t++)
-        if (cmnd_[t] < best) { best = cmnd_[t]; bt = t; }
+        if (cmnd_[(size_t)t] < best) { best = cmnd_[(size_t)t]; bt = t; }
       if (bt < 0 || best > 0.5) { clear(); return; }  // no confident pitch
       tau = bt;
     }
@@ -124,7 +124,7 @@ public:
     // Parabolic interpolation around the dip for sub-sample (sub-cent) accuracy.
     double betterTau = tau;
     if (tau > minLag_ && tau < maxLag_) {
-      double s0 = cmnd_[tau - 1], s1 = cmnd_[tau], s2 = cmnd_[tau + 1];
+      double s0 = cmnd_[(size_t)(tau - 1)], s1 = cmnd_[(size_t)tau], s2 = cmnd_[(size_t)(tau + 1)];
       double denom = s0 + s2 - 2.0 * s1;
       if (denom != 0.0) betterTau = tau + 0.5 * (s0 - s2) / denom;
     }

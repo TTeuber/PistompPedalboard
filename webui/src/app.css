@@ -25,12 +25,15 @@
   --teal:     #34b0a4;
 
   /* ---- surfaces -------------------------------------------- */
+  /* Widened elevation steps so each layer reads on its own rather than leaning
+     on a border: page < well < card < control are now distinct values, and the
+     hairlines sit ~2:1 against the page instead of ~1.4:1. */
   --bg:       #0a0a0c;   /* page */
-  --panel:    #131316;   /* lanes, cards */
-  --panel-2:  #1a1a1f;   /* controls, raised chips */
-  --inset:    #070709;   /* recessed wells (inputs, knob bg) */
-  --line:     #2a2a31;   /* hairline borders */
-  --line-2:   #3a3a44;   /* hover / emphasis borders */
+  --panel:    #1c1c23;   /* lanes, cards */
+  --panel-2:  #26262e;   /* controls, raised chips */
+  --inset:    #15151b;   /* recessed wells (inputs, knob bg) */
+  --line:     #45454f;   /* hairline borders */
+  --line-2:   #5c5c68;   /* hover / emphasis borders */
 
   /* ---- ink ------------------------------------------------- */
   --text:     #ece7db;   /* warm off-white */

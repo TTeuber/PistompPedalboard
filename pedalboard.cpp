@@ -58,6 +58,7 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
@@ -111,6 +112,13 @@ static pistomp::Board g_board;  // owns the SPI0 lock + the v3 control wiring
 // interleaved S16 wire buffer now lives inside AudioIO.
 static float g_L[MAX_FRAMES];
 static float g_R[MAX_FRAMES];
+
+// Smoothed master fader, carried across audio blocks. The fader's raw atomic
+// jumps in discrete steps as the web slider drags; applying it as a flat
+// per-block multiplier steps the waveform and clicks. One-pole ramp it per
+// sample (~20 ms) toward the target so a swept fader glides. Matches the
+// in/output-trim smoothing in effects/{input,output}_gain.h.
+static float g_master = 1.0f;
 
 static void on_sigint(int) { g_ctl.running.store(false); }
 
@@ -239,6 +247,10 @@ static pistomp::AudioCallback makeAudioCallback(double budget_s) {
   return [budget_s](const float *const *in, float *const *out, int n) {
     const float master = g_ctl.masterLevel.load(std::memory_order_relaxed);
     const bool bypass = g_ctl.bypassed.load(std::memory_order_relaxed);
+    // Per-sample smoothing coefficient for the master ramp. budget_s spans n
+    // frames, so per-sample dt = budget_s/n; tau = 20 ms.
+    const float mCoef =
+        (float)std::exp(-budget_s / (double(n > 0 ? n : 1) * 0.020));
 
     for (int f = 0; f < n; f++) {
       g_L[f] = in[0][f];
@@ -288,8 +300,9 @@ static pistomp::AudioCallback makeAudioCallback(double budget_s) {
 
     float opk[2] = {0.0f, 0.0f};
     for (int f = 0; f < n; f++) {
-      out[0][f] = g_L[f] * master;
-      out[1][f] = g_R[f] * master;
+      g_master = mCoef * g_master + (1.0f - mCoef) * master;
+      out[0][f] = g_L[f] * g_master;
+      out[1][f] = g_R[f] * g_master;
       float o0 = out[0][f];
       if (o0 < 0)
         o0 = -o0;
