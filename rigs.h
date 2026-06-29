@@ -29,9 +29,11 @@ std::vector<std::string> list(const std::string& dir);
 bool load(const std::string& dir, const std::string& name, Chain& chain,
           PedalControls& ctl, FxFactory& factory);
 
-// Snapshot the chain to dir/<name>.json. false on write error.
+// Snapshot the chain to dir/<name>.json. false on write error. Preserves the
+// file's metadata identity (id/createdAt/provenance) across saves and refreshes
+// updatedAt/contentHash; `idOut`, if given, receives the rig's stable id.
 bool save(const std::string& dir, const std::string& name, Chain& chain,
-          PedalControls& ctl);
+          PedalControls& ctl, std::string* idOut = nullptr);
 
 // Values-only document:
 //   { name, master, bypassed,

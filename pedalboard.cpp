@@ -42,6 +42,7 @@
 #include "effects/tuner.h"
 #include "effects/vibrato.h"
 #include "fx_factory.h"
+#include "manifest.h"
 #include "pedal_controls.h"
 #include "rigs.h"
 #include "ui/ui_controller.h"
@@ -378,6 +379,11 @@ int main(int argc, char **argv) {
   std::string presetDir = (base / "presets").string();   // per-pedal presets
   std::string setlistDir = (base / "setlists").string(); // ordered rig lists
 
+  // Stamp any rig/setlist/preset still on the pre-sync schema with a stable id +
+  // timestamps, migrate legacy setlist rig references, and (re)build the library
+  // index. Idempotent: a one-time pass on first launch, a no-op thereafter.
+  manifest::rebuild(base.string());
+
   // --- load + prewarm the NAM model (normal thread; malloc fine here) ---
   printf("Loading NAM model: %s\n", modelPath.c_str());
   std::unique_ptr<nam::DSP> model;
@@ -488,7 +494,8 @@ int main(int argc, char **argv) {
   memset(g_R, 0, sizeof(g_R));
 
   // --- web server: the primary control surface ---
-  WebServer web(g_chain, g_ctl, g_fx, webDir, rigDir, presetDir, setlistDir);
+  WebServer web(g_chain, g_ctl, g_fx, webDir, rigDir, presetDir, setlistDir,
+                base.string());
   if (web.start("0.0.0.0", WEB_PORT))
     printf("Web UI: http://<pi-ip>:%d/  (serving %s)\n", WEB_PORT,
            webDir.c_str());

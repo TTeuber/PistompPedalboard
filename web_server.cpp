@@ -8,6 +8,7 @@
 #include "fx_factory.h"
 #include "fx_id.h"
 #include "pedal_controls.h"
+#include "manifest.h"
 #include "rigs.h"
 #include "presets.h"
 #include "setlists.h"
@@ -22,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <thread>
@@ -118,10 +120,11 @@ void ok(httplib::Response& res) {
 
 WebServer::WebServer(Chain& chain, PedalControls& ctl, FxFactory& factory,
                      std::string webDir, std::string rigDir,
-                     std::string presetDir, std::string setlistDir)
+                     std::string presetDir, std::string setlistDir,
+                     std::string baseDir)
     : chain_(chain), ctl_(ctl), factory_(factory), webDir_(std::move(webDir)),
       rigDir_(std::move(rigDir)), presetDir_(std::move(presetDir)),
-      setlistDir_(std::move(setlistDir)),
+      setlistDir_(std::move(setlistDir)), baseDir_(std::move(baseDir)),
       svr_(std::make_unique<httplib::Server>()) {
 }
 
@@ -371,6 +374,8 @@ void WebServer::setupRoutes() {
       res.set_content("{\"error\":\"save failed\"}", "application/json");
       return;
     }
+    manifest::upsertFile(baseDir_, "rig",
+                         (std::filesystem::path(rigDir_) / (name + ".json")).string());
     ok(res);
   });
 
@@ -414,12 +419,15 @@ void WebServer::setupRoutes() {
     if (!parseBody(req, res, b)) return;
     Effect* fx = chain_.find(b.value("effect", std::string{}));
     std::string name = b.value("name", std::string{});
-    if (!fx || name.empty() ||
-        !presets::save(presetDir_, fxBaseKind(fx->type_id()), name, *fx)) {
+    std::string kind = fx ? fxBaseKind(fx->type_id()) : std::string{};
+    if (!fx || name.empty() || !presets::save(presetDir_, kind, name, *fx)) {
       res.status = 400;
       res.set_content("{\"error\":\"save failed\"}", "application/json");
       return;
     }
+    manifest::upsertFile(
+        baseDir_, "preset",
+        (std::filesystem::path(presetDir_) / kind / (name + ".json")).string());
     ok(res);
   });
 
@@ -430,7 +438,11 @@ void WebServer::setupRoutes() {
     Effect* fx = chain_.find(b.value("effect", std::string{}));
     std::string name = b.value("name", std::string{});
     if (!fx || name.empty()) { res.status = 400; return; }
-    presets::remove(presetDir_, fxBaseKind(fx->type_id()), name);
+    std::string kind = fxBaseKind(fx->type_id());
+    presets::remove(presetDir_, kind, name);
+    manifest::removeFile(
+        baseDir_,
+        (std::filesystem::path(presetDir_) / kind / (name + ".json")).string());
     ok(res);
   });
 
@@ -442,33 +454,64 @@ void WebServer::setupRoutes() {
     res.set_content(arr.dump(), "application/json");
   });
 
-  // ?name=<n>  -> { name, rigs:[...] }
+  // ?name=<n>  -> { name, id, rigs:[ {id, name, missing} ] }
+  // Each rig ref is resolved through the manifest: a renamed rig still resolves
+  // by id (we return its CURRENT name); a deleted one comes back missing:true so
+  // the UI can flag it instead of silently breaking.
   svr_->Get("/api/setlist", [this](const httplib::Request& req, httplib::Response& res) {
     std::string name = req.get_param_value("name");
-    std::vector<std::string> rigList;
-    if (name.empty() || !setlists::load(setlistDir_, name, rigList)) {
+    std::vector<setlists::RigRef> refs;
+    std::string id;
+    if (name.empty() || !setlists::load(setlistDir_, name, refs, &id)) {
       res.status = 404;
       res.set_content("{\"error\":\"no such setlist\"}", "application/json");
       return;
     }
-    json out = {{"name", name}, {"rigs", rigList}};
+    manifest::Index idx = manifest::load(baseDir_);
+    json rigsArr = json::array();
+    for (const auto& r : refs) {
+      std::string outName = r.name;
+      bool missing = true;
+      if (!r.id.empty()) {
+        std::string cur = idx.nameForId(r.id);
+        if (!cur.empty()) { outName = cur; missing = false; }
+      } else if (!idx.idForName("rig", r.name).empty()) {
+        missing = false;  // legacy ref still resolvable by name
+      }
+      rigsArr.push_back({{"id", r.id}, {"name", outName}, {"missing", missing}});
+    }
+    json out = {{"name", name}, {"id", id}, {"rigs", rigsArr}};
     res.set_content(out.dump(), "application/json");
   });
 
-  // {name, rigs:[...]}
+  // {name, rigs:[ name | {id, name} ]}  -- the server resolves each rig's id from
+  // its name via the manifest (names are unique), so the UI can stay name-based.
   svr_->Post("/api/setlist/save", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
     std::string name = b.value("name", std::string{});
-    std::vector<std::string> rigList;
-    if (b.contains("rigs") && b["rigs"].is_array())
-      for (const auto& r : b["rigs"])
-        if (r.is_string()) rigList.push_back(r.get<std::string>());
-    if (name.empty() || !setlists::save(setlistDir_, name, rigList)) {
+    manifest::Index idx = manifest::load(baseDir_);
+    std::vector<setlists::RigRef> refs;
+    if (b.contains("rigs") && b["rigs"].is_array()) {
+      for (const auto& r : b["rigs"]) {
+        std::string rid, rname;
+        if (r.is_string()) {
+          rname = r.get<std::string>();
+        } else if (r.is_object()) {
+          rname = r.value("name", std::string{});
+          rid = r.value("id", std::string{});
+        }
+        if (rid.empty()) rid = idx.idForName("rig", rname);
+        refs.push_back({rid, rname});
+      }
+    }
+    if (name.empty() || !setlists::save(setlistDir_, name, refs)) {
       res.status = 400;
       res.set_content("{\"error\":\"save failed\"}", "application/json");
       return;
     }
+    manifest::upsertFile(baseDir_, "setlist",
+                         (std::filesystem::path(setlistDir_) / (name + ".json")).string());
     ok(res);
   });
 
@@ -479,6 +522,8 @@ void WebServer::setupRoutes() {
     std::string name = b.value("name", std::string{});
     if (name.empty()) { res.status = 400; return; }
     setlists::remove(setlistDir_, name);
+    manifest::removeFile(baseDir_,
+                         (std::filesystem::path(setlistDir_) / (name + ".json")).string());
     ok(res);
   });
 }

@@ -1,23 +1,115 @@
 {
-  "name": "Clean Worship",
-  "master": 1.0,
   "bypassed": false,
-  "fxGrid": [
-    { "kind": "drive",  "id": "drive"  },
-    { "kind": "chorus", "id": "chorus" },
-    { "kind": "delay",  "id": "delay"  },
-    { "kind": "reverb", "id": "reverb" },
-    null, null, null, null
-  ],
+  "contentHash": "fnv1a64:3adaed4a52169ca8",
+  "createdAt": "2026-06-27T21:44:51Z",
   "effects": {
-    "tuner":  { "enabled": false, "params": { "mute": 1, "ref": 440 } },
-    "gate":   { "enabled": true,  "params": { "threshold": -62, "release": 150 } },
-    "comp":   { "enabled": true,  "params": { "threshold": -18, "ratio": 4, "makeup": 6 } },
-    "drive":  { "enabled": false, "params": { "type": 0, "drive": 25, "tone": 65, "level": 75 } },
-    "amp":    { "enabled": true,  "params": { "drive": 100, "level": 100 } },
-    "eq":     { "enabled": true,  "params": { "low": -1, "mid": -2, "high": 2 } },
-    "chorus": { "enabled": true,  "params": { "rate": 0.7, "depth": 28, "feedback": 8, "mix": 30, "vibrato": 0 } },
-    "delay":  { "enabled": true,  "params": { "time": 360, "feedback": 28, "mix": 22, "tone": 55, "pingpong": 0 } },
-    "reverb": { "enabled": true,  "params": { "size": 45, "damping": 55, "width": 100, "mix": 22, "freeze": 0 } }
-  }
+    "amp": {
+      "enabled": true,
+      "params": {
+        "drive": 100,
+        "level": 100
+      }
+    },
+    "chorus": {
+      "enabled": true,
+      "params": {
+        "depth": 28,
+        "feedback": 8,
+        "mix": 30,
+        "rate": 0.7,
+        "vibrato": 0
+      }
+    },
+    "comp": {
+      "enabled": true,
+      "params": {
+        "makeup": 6,
+        "ratio": 4,
+        "threshold": -18
+      }
+    },
+    "delay": {
+      "enabled": true,
+      "params": {
+        "feedback": 28,
+        "mix": 22,
+        "pingpong": 0,
+        "time": 360,
+        "tone": 55
+      }
+    },
+    "drive": {
+      "enabled": false,
+      "params": {
+        "drive": 25,
+        "level": 75,
+        "tone": 65,
+        "type": 0
+      }
+    },
+    "eq": {
+      "enabled": true,
+      "params": {
+        "high": 2,
+        "low": -1,
+        "mid": -2
+      }
+    },
+    "gate": {
+      "enabled": true,
+      "params": {
+        "release": 150,
+        "threshold": -62
+      }
+    },
+    "reverb": {
+      "enabled": true,
+      "params": {
+        "damping": 55,
+        "freeze": 0,
+        "mix": 22,
+        "size": 45,
+        "width": 100
+      }
+    },
+    "tuner": {
+      "enabled": false,
+      "params": {
+        "mute": 1,
+        "ref": 440
+      }
+    }
+  },
+  "fxGrid": [
+    {
+      "id": "drive",
+      "kind": "drive"
+    },
+    {
+      "id": "chorus",
+      "kind": "chorus"
+    },
+    {
+      "id": "delay",
+      "kind": "delay"
+    },
+    {
+      "id": "reverb",
+      "kind": "reverb"
+    },
+    null,
+    null,
+    null,
+    null
+  ],
+  "id": "e3ea9976-d6c7-4c1f-ac95-c6da8c64f380",
+  "master": 1.0,
+  "name": "Clean Worship",
+  "origin": {
+    "by": null,
+    "sourceId": null
+  },
+  "owner": null,
+  "schema": 2,
+  "updatedAt": "2026-06-27T21:44:51Z"
 }

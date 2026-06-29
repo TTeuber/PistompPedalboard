@@ -1,10 +1,20 @@
 {
-  "name": "Hard Overdrive",
+  "contentHash": "fnv1a64:e31eaca0c19f3fc6",
+  "createdAt": "2026-06-26T19:12:22Z",
+  "id": "b20fdd72-b7b8-471f-831b-fdf45bf5e82c",
   "kind": "drive",
+  "name": "Hard Overdrive",
+  "origin": {
+    "by": null,
+    "sourceId": null
+  },
+  "owner": null,
   "params": {
-    "type": 1,
     "drive": 80,
+    "level": 65,
     "tone": 45,
-    "level": 65
-  }
+    "type": 1
+  },
+  "schema": 2,
+  "updatedAt": "2026-06-26T19:12:22Z"
 }

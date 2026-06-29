@@ -3,6 +3,7 @@
 #include "presets.h"
 
 #include "effect.h"
+#include "meta.h"
 
 #include <json.hpp>
 
@@ -53,13 +54,27 @@ bool save(const std::string& dir, const std::string& kind,
   std::error_code ec;
   fs::path d = fs::path(dir) / kind;
   fs::create_directories(d, ec);
-  json doc;
-  doc["name"] = name;
-  doc["kind"] = kind;
+  fs::path path = d / (name + ".json");
+
+  // Content is kind + param values; metadata wraps it. Preserve identity across
+  // saves so re-saving a preset updates it in place.
+  json content;
+  content["kind"] = kind;
   json params = json::object();
   for (const auto& p : fx.params) params[p->id] = p->get();
-  doc["params"] = params;
-  std::ofstream out(d / (name + ".json"));
+  content["params"] = params;
+
+  json doc = content;
+  json prev;
+  { std::ifstream in(path); if (in) { try { in >> prev; } catch (...) {} } }
+  if (prev.is_object()) {
+    for (const char* k : {"id", "createdAt", "origin", "owner"})
+      if (prev.contains(k)) doc[k] = prev[k];
+  }
+  doc["name"] = name;
+  meta::stamp(doc, content, 2);
+
+  std::ofstream out(path);
   if (!out) return false;
   out << doc.dump(2);
   return true;

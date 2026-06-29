@@ -21,7 +21,7 @@ class WebServer {
 public:
   WebServer(Chain& chain, PedalControls& ctl, FxFactory& factory,
             std::string webDir, std::string rigDir, std::string presetDir,
-            std::string setlistDir);
+            std::string setlistDir, std::string baseDir);
   ~WebServer();
 
   // Spawn the server thread. Returns false if the port can't be bound.
@@ -38,6 +38,7 @@ private:
   std::string rigDir_;      // whole-chain rigs
   std::string presetDir_;   // per-pedal presets (by kind)
   std::string setlistDir_;  // ordered rig lists
+  std::string baseDir_;     // library root (parent of the three dirs above)
   std::unique_ptr<httplib::Server> svr_;
   std::thread thread_;
 };

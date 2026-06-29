@@ -1,23 +1,115 @@
 {
-  "name": "Driven Lead",
-  "master": 1.0,
   "bypassed": false,
-  "fxGrid": [
-    { "kind": "drive",  "id": "drive"  },
-    { "kind": "chorus", "id": "chorus" },
-    { "kind": "delay",  "id": "delay"  },
-    { "kind": "reverb", "id": "reverb" },
-    null, null, null, null
-  ],
+  "contentHash": "fnv1a64:47398afa8c6b4fa6",
+  "createdAt": "2026-06-27T21:44:54Z",
   "effects": {
-    "tuner":  { "enabled": false, "params": { "mute": 1, "ref": 440 } },
-    "gate":   { "enabled": true,  "params": { "threshold": -52, "release": 120 } },
-    "comp":   { "enabled": true,  "params": { "threshold": -22, "ratio": 5, "makeup": 7 } },
-    "drive":  { "enabled": true,  "params": { "type": 0, "drive": 55, "tone": 60, "level": 70 } },
-    "amp":    { "enabled": true,  "params": { "drive": 150, "level": 95 } },
-    "eq":     { "enabled": true,  "params": { "low": -2, "mid": 3, "high": 1 } },
-    "chorus": { "enabled": false, "params": { "rate": 0.8, "depth": 25, "feedback": 10, "mix": 30, "vibrato": 0 } },
-    "delay":  { "enabled": true,  "params": { "time": 400, "feedback": 38, "mix": 26, "tone": 60, "pingpong": 1 } },
-    "reverb": { "enabled": true,  "params": { "size": 55, "damping": 50, "width": 100, "mix": 28, "freeze": 0 } }
-  }
+    "amp": {
+      "enabled": true,
+      "params": {
+        "drive": 150,
+        "level": 95
+      }
+    },
+    "chorus": {
+      "enabled": false,
+      "params": {
+        "depth": 25,
+        "feedback": 10,
+        "mix": 30,
+        "rate": 0.8,
+        "vibrato": 0
+      }
+    },
+    "comp": {
+      "enabled": true,
+      "params": {
+        "makeup": 7,
+        "ratio": 5,
+        "threshold": -22
+      }
+    },
+    "delay": {
+      "enabled": true,
+      "params": {
+        "feedback": 38,
+        "mix": 26,
+        "pingpong": 1,
+        "time": 400,
+        "tone": 60
+      }
+    },
+    "drive": {
+      "enabled": true,
+      "params": {
+        "drive": 55,
+        "level": 70,
+        "tone": 60,
+        "type": 0
+      }
+    },
+    "eq": {
+      "enabled": true,
+      "params": {
+        "high": 1,
+        "low": -2,
+        "mid": 3
+      }
+    },
+    "gate": {
+      "enabled": true,
+      "params": {
+        "release": 120,
+        "threshold": -52
+      }
+    },
+    "reverb": {
+      "enabled": true,
+      "params": {
+        "damping": 50,
+        "freeze": 0,
+        "mix": 28,
+        "size": 55,
+        "width": 100
+      }
+    },
+    "tuner": {
+      "enabled": false,
+      "params": {
+        "mute": 1,
+        "ref": 440
+      }
+    }
+  },
+  "fxGrid": [
+    {
+      "id": "drive",
+      "kind": "drive"
+    },
+    {
+      "id": "chorus",
+      "kind": "chorus"
+    },
+    {
+      "id": "delay",
+      "kind": "delay"
+    },
+    {
+      "id": "reverb",
+      "kind": "reverb"
+    },
+    null,
+    null,
+    null,
+    null
+  ],
+  "id": "a32aebd8-d52d-44b2-82ed-816b884e2a33",
+  "master": 1.0,
+  "name": "Driven Lead",
+  "origin": {
+    "by": null,
+    "sourceId": null
+  },
+  "owner": null,
+  "schema": 2,
+  "updatedAt": "2026-06-27T21:44:54Z"
 }

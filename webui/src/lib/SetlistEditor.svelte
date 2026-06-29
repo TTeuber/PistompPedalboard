@@ -10,11 +10,11 @@
   import { onMount } from 'svelte';
   import { api } from './api.js';
   import { rigState, loadLists, saveRig as saveBoardRig } from './rigs.svelte.js';
-  import type { Setlist } from './types.js';
+  import type { RigRef, Setlist } from './types.js';
 
   // The setlist currently open for editing ('' = new/unsaved).
   let sel = $state('');
-  let rigs = $state<string[]>([]); // its ordered rig names (locally editable)
+  let rigs = $state<RigRef[]>([]); // its ordered rig refs (locally editable)
   let name = $state(''); // name field for save / new
   let filter = $state(''); // catalogue search box
   let rigName = $state(''); // save-current-board-as-a-rig field
@@ -26,14 +26,14 @@
 
   // Last-saved snapshot the working state is diffed against to detect edits.
   let baseName = $state('');
-  let baseRigs = $state<string[]>([]);
+  let baseRigs = $state<RigRef[]>([]);
   // An action parked behind the unsaved-changes prompt (null = no prompt open).
   let pending = $state<null | (() => void | Promise<void>)>(null);
   // Whether the delete-confirmation prompt is open.
   let confirmingDelete = $state(false);
 
-  const sameList = (a: string[], b: string[]) =>
-    a.length === b.length && a.every((x, i) => x === b[i]);
+  const sameList = (a: RigRef[], b: RigRef[]) =>
+    a.length === b.length && a.every((x, i) => x.name === b[i].name && x.id === b[i].id);
   // True when the working name or rig order differs from the last save.
   const dirty = $derived(name.trim() !== baseName.trim() || !sameList(rigs, baseRigs));
 
@@ -68,7 +68,7 @@
   // How many times each rig appears in the working setlist (for the count badge).
   const counts = $derived.by(() => {
     const m: Record<string, number> = {};
-    for (const r of rigs) m[r] = (m[r] ?? 0) + 1;
+    for (const r of rigs) m[r.name] = (m[r.name] ?? 0) + 1;
     return m;
   });
 
@@ -117,10 +117,15 @@
     el.select();
   }
 
-  function addRig(r: string, at = rigs.length) {
+  function addRig(r: RigRef, at = rigs.length) {
     const copy = [...rigs];
     copy.splice(at, 0, r);
     rigs = copy;
+  }
+  // Add a rig dragged/clicked from the catalogue (which deals in names); its id
+  // is resolved server-side on save, so an empty id here is fine.
+  function addCat(rigName: string, at = rigs.length) {
+    addRig({ id: '', name: rigName }, at);
   }
   function removeRig(i: number) {
     rigs = rigs.filter((_, k) => k !== i);
@@ -162,11 +167,11 @@
   // One in-flight drag, from either pane. `from:'cat'` adds a rig; `from:'list'`
   // reorders within the setlist. `over` is the insertion index in the setlist
   // (where a drop would land); `over === rigs.length` means "append".
-  let drag = $state<{ from: 'cat' | 'list'; index: number; rig: string } | null>(null);
+  let drag = $state<{ from: 'cat' | 'list'; index: number; rig: RigRef } | null>(null);
   let over = $state(-1);
 
-  function startCat(e: DragEvent, rig: string) {
-    drag = { from: 'cat', index: -1, rig };
+  function startCat(e: DragEvent, rigName: string) {
+    drag = { from: 'cat', index: -1, rig: { id: '', name: rigName } };
     e.dataTransfer!.effectAllowed = 'copy';
   }
   function startList(e: DragEvent, index: number) {
@@ -242,13 +247,13 @@
             draggable="true"
             ondragstart={(e) => startCat(e, r)}
             ondragend={reset}
-            ondblclick={() => addRig(r)}
+            ondblclick={() => addCat(r)}
             title="Drag into the setlist, or double-click to append"
           >
             <span class="grip">⋮⋮</span>
             <span class="name">{r}</span>
             {#if counts[r]}<span class="badge">×{counts[r]}</span>{/if}
-            <button class="add" title="Add to setlist" onclick={() => addRig(r)}>＋</button>
+            <button class="add" title="Add to setlist" onclick={() => addCat(r)}>＋</button>
           </li>
         {/each}
         {#if !shown.length}
@@ -352,18 +357,20 @@
         ondrop={drop}
         ondragleave={(e) => e.currentTarget === e.target && (over = -1)}
       >
-        {#each rigs as r, i (r + '-' + i)}
+        {#each rigs as r, i (r.name + '-' + i)}
           {#if over === i}<li class="dropline"></li>{/if}
           <li
             class="rig-row"
             class:ghost={drag?.from === 'list' && drag.index === i}
+            class:missing={r.missing}
             draggable="true"
             ondragstart={(e) => startList(e, i)}
             ondragend={reset}
           >
             <span class="grip">⋮⋮</span>
             <span class="idx">{i + 1}</span>
-            <span class="name">{r}</span>
+            <span class="name">{r.name}</span>
+            {#if r.missing}<span class="missing-tag" title="This rig is no longer in your library">missing</span>{/if}
             <button class="remove" title="Remove" onclick={() => removeRig(i)}>✕</button>
           </li>
         {/each}
@@ -661,6 +668,16 @@
   .rig-row:hover { border-color: var(--line-2); }
   .cat-row.used { border-style: dashed; }
   .rig-row.ghost { opacity: .35; }
+  .rig-row.missing { border-style: dashed; }
+  .rig-row.missing .name { color: var(--faint); font-style: italic; }
+  .missing-tag {
+    flex: 0 0 auto;
+    font-size: var(--fs-xs);
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+    border-radius: var(--r-pill);
+    padding: 0 var(--sp-2);
+  }
 
   .grip { color: var(--faint); cursor: grab; user-select: none; letter-spacing: -2px; }
   .idx {

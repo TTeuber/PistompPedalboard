@@ -8,7 +8,7 @@
 
 import { api } from './api.js';
 import { applyState } from './store.svelte.js';
-import type { BoardState, Setlist } from './types.js';
+import type { BoardState, RigRef, Setlist } from './types.js';
 
 export const ALL = '__all__'; // pseudo-setlist: the whole rig catalogue
 
@@ -16,7 +16,7 @@ export const rigState = $state({
   setlistNames: [] as string[],
   allRigs: [] as string[],
   selSetlist: ALL,
-  viewRigs: [] as string[], // rigs shown for the current selection
+  viewRigs: [] as RigRef[], // rigs shown for the current selection
   activeRig: '', // last rig we loaded (for highlight + stepping)
 });
 
@@ -38,7 +38,8 @@ export async function loadLists(): Promise<void> {
 export async function chooseSetlist(name: string): Promise<void> {
   rigState.selSetlist = name;
   if (name === ALL) {
-    rigState.viewRigs = rigState.allRigs;
+    // The whole catalogue is just names; present them as refs (always present).
+    rigState.viewRigs = rigState.allRigs.map((n) => ({ id: '', name: n }));
     return;
   }
   try {
@@ -50,22 +51,21 @@ export async function chooseSetlist(name: string): Promise<void> {
 }
 
 export async function pickRig(name: string): Promise<void> {
+  if (!name) return;
   rigState.activeRig = name;
   applyState(await api<BoardState>('/api/rig/load', { name }));
 }
 
-// Move to the prev/next rig in the current view; from nothing, jump to an end.
+// Move to the prev/next loadable rig in the current view; from nothing, jump to
+// an end. Missing rigs (deleted from the library) are skipped over.
 export function step(dir: number): void {
   const rigs = rigState.viewRigs;
   if (!rigs.length) return;
-  const cur = rigs.indexOf(rigState.activeRig);
-  const next =
-    cur < 0
-      ? dir > 0
-        ? 0
-        : rigs.length - 1
-      : Math.min(rigs.length - 1, Math.max(0, cur + dir));
-  pickRig(rigs[next]);
+  const cur = rigs.findIndex((r) => r.name === rigState.activeRig);
+  let next = cur < 0 ? (dir > 0 ? 0 : rigs.length - 1) : cur + dir;
+  while (next >= 0 && next < rigs.length && rigs[next].missing) next += dir;
+  if (next < 0 || next >= rigs.length) return;
+  pickRig(rigs[next].name);
 }
 
 // Snapshot the live board under `name`. A new name joins the catalogue and

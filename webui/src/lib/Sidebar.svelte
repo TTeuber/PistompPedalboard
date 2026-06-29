@@ -84,10 +84,15 @@
       </div>
 
       <ul class="riglist">
-        {#each rigState.viewRigs as r (r)}
+        {#each rigState.viewRigs as r (r.id || r.name)}
           <li>
-            <button class="rig" class:active={r === rigState.activeRig} onclick={() => pickRig(r)}
-              >{r}</button
+            <button
+              class="rig"
+              class:active={r.name === rigState.activeRig}
+              class:missing={r.missing}
+              disabled={r.missing}
+              title={r.missing ? 'This rig is no longer in your library' : ''}
+              onclick={() => pickRig(r.name)}>{r.name}{#if r.missing}<span class="tag">missing</span>{/if}</button
             >
           </li>
         {/each}
@@ -242,6 +247,17 @@
     border-left-color: var(--accent);
     color: var(--accent);
     font-weight: 600;
+  }
+  .rig.missing { color: var(--faint); cursor: default; font-style: italic; }
+  .rig.missing:hover { background: none; }
+  .tag {
+    margin-left: var(--sp-2);
+    font-size: var(--fs-xs);
+    font-style: normal;
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+    border-radius: var(--r-pill);
+    padding: 0 var(--sp-2);
   }
   .empty { color: var(--faint); font-size: var(--fs-sm); padding: var(--sp-3) var(--sp-4); }
 

@@ -1,8 +1,27 @@
 {
+  "contentHash": "fnv1a64:58e5a83a589dc5d4",
+  "createdAt": "2026-06-26T19:12:24Z",
+  "id": "360684c6-e02c-426e-b295-60e1c8d6b157",
   "name": "Sunday Morning",
+  "origin": {
+    "by": null,
+    "sourceId": null
+  },
+  "owner": null,
   "rigs": [
-    "Clean Worship",
-    "Driven Lead",
-    "Ambient Swell"
-  ]
+    {
+      "id": "e3ea9976-d6c7-4c1f-ac95-c6da8c64f380",
+      "name": "Clean Worship"
+    },
+    {
+      "id": "a32aebd8-d52d-44b2-82ed-816b884e2a33",
+      "name": "Driven Lead"
+    },
+    {
+      "id": "baf51348-f5a0-4f60-9aa3-61ad0a817546",
+      "name": "Ambient Swell"
+    }
+  ],
+  "schema": 2,
+  "updatedAt": "2026-06-26T19:12:24Z"
 }

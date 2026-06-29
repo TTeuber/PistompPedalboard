@@ -1,10 +1,20 @@
 {
-  "name": "Light Crunch",
+  "contentHash": "fnv1a64:443e1106e9ebf155",
+  "createdAt": "2026-06-26T19:12:21Z",
+  "id": "39f4a399-f299-491d-b101-a31cbe1e8b3d",
   "kind": "drive",
+  "name": "Light Crunch",
+  "origin": {
+    "by": null,
+    "sourceId": null
+  },
+  "owner": null,
   "params": {
-    "type": 0,
     "drive": 25,
+    "level": 75,
     "tone": 65,
-    "level": 75
-  }
+    "type": 0
+  },
+  "schema": 2,
+  "updatedAt": "2026-06-26T19:12:21Z"
 }

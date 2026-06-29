@@ -7,6 +7,7 @@
 #include "effect.h"
 #include "fx_factory.h"
 #include "fx_id.h"
+#include "meta.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -125,12 +126,27 @@ bool load(const std::string& dir, const std::string& name, Chain& chain,
 }
 
 bool save(const std::string& dir, const std::string& name, Chain& chain,
-          PedalControls& ctl) {
+          PedalControls& ctl, std::string* idOut) {
   std::error_code ec;
   fs::create_directories(dir, ec);
-  json doc = capture(chain, ctl);
+  fs::path path = fs::path(dir) / (name + ".json");
+
+  // Content (master/bypassed/fxGrid/effects) is what we hash; the metadata
+  // wraps it. Preserve identity (id/createdAt/provenance) from any existing file
+  // so re-saving a rig updates it in place rather than minting a new identity.
+  json content = capture(chain, ctl);
+  json doc = content;
+  json prev;
+  { std::ifstream in(path); if (in) { try { in >> prev; } catch (...) {} } }
+  if (prev.is_object()) {
+    for (const char* k : {"id", "createdAt", "origin", "owner"})
+      if (prev.contains(k)) doc[k] = prev[k];
+  }
   doc["name"] = name;
-  std::ofstream out(fs::path(dir) / (name + ".json"));
+  meta::stamp(doc, content, 2);
+  if (idOut) *idOut = doc.value("id", std::string{});
+
+  std::ofstream out(path);
   if (!out) return false;
   out << doc.dump(2);
   return true;

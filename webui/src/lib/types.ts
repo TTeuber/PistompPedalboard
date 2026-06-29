@@ -71,8 +71,18 @@ export interface PedalPresetList {
   names: string[];
 }
 
-// A setlist: an ordered list of rig names to step through on stage.
+// A reference to a rig from within a setlist. `id` is the stable, rename-safe
+// link; `name` is the rig's current display name (resolved by the server).
+// `missing` is true when the referenced rig no longer exists in the library.
+export interface RigRef {
+  id: string;
+  name: string;
+  missing?: boolean;
+}
+
+// A setlist: an ordered list of rig references to step through on stage.
 export interface Setlist {
   name: string;
-  rigs: string[];
+  id?: string;
+  rigs: RigRef[];
 }

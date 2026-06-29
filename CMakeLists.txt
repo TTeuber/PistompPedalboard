@@ -23,6 +23,8 @@ target_sources(pedalboard PRIVATE
   rigs.cpp
   presets.cpp
   setlists.cpp
+  meta.cpp
+  manifest.cpp
 )
 target_compile_definitions(pedalboard PRIVATE
   JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_STANDALONE_APPLICATION=1)
