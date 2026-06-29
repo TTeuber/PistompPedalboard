@@ -83,6 +83,7 @@
       {bipolar}
       start={-225}
       sweep={270}
+      showTick={true}
       oninput={liveInput}
     />
     <!-- Name by default, value while hovering/turning (CSS swap). The name keeps

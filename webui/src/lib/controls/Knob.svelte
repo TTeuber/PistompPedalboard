@@ -1,3 +1,8 @@
+<script module lang="ts">
+  // Per-instance id so each knob's clip-path is unique in the DOM.
+  let _uid = 0;
+</script>
+
 <script lang="ts">
   // Knob that "wipes" a fill around its centre as the value rises, with a tick
   // marking the leading edge (the sketch shape). Pure SVG geometry — no assets —
@@ -20,6 +25,7 @@
     sweep = 360, // total degrees the fill can travel, clockwise
     shape = 'square', // 'square' | 'circle'
     bipolar = false, // fill from the sweep centre outward instead of from start
+    showTick = true, // draw the leading-edge pointer line
     resetValue = bipolar ? min + (max - min) / 2 : min,
     oninput = undefined,
   }: {
@@ -33,11 +39,17 @@
     sweep?: number;
     shape?: 'square' | 'circle';
     bipolar?: boolean;
+    showTick?: boolean;
     resetValue?: number;
     oninput?: (v: number) => void;
   } = $props();
 
+  const clipId = `knob-fill-${_uid++}`;
   const PAD = 5; // inset so the fill sits inside the outline
+  const STROKE = 2; // frame border width
+  const FILL_PAD = PAD + STROKE / 2; // fill stops at the inner edge of the border
+  const RADIUS = 3; // corner radius of the square frame
+  const FILL_RADIUS = RADIUS - STROKE / 2; // matching radius at the inner edge
   const span = $derived(max - min || 1);
   const t = $derived(Math.min(1, Math.max(0, (value - min) / span)));
 
@@ -57,7 +69,7 @@
   // edges are smooth enough at a 2° step.
   const points = $derived.by(() => {
     const half = size / 2;
-    const r = half - PAD;
+    const r = half - FILL_PAD;
     const aCur = start + sweep * t;
     let a0: number, a1: number;
     if (bipolar) {
@@ -83,19 +95,35 @@
   // Leading-edge indicator line (also the rest position when value is at min).
   const tick = $derived.by(() => {
     const half = size / 2;
-    const [x2, y2] = edge(start + sweep * t, half, half - PAD);
+    // Stop at the inner edge of the border, like the wipe. Pull in by the cap
+    // radius (STROKE/2) so the rounded end lands on the edge, not over it.
+    const [x2, y2] = edge(start + sweep * t, half, half - FILL_PAD - STROKE / 2);
     return { c: half, x2, y2 };
   });
 
-  // Neutral mark at the sweep centre, so a bipolar knob shows where zero is.
-  const centerMark = $derived.by(() => {
-    if (!bipolar) return null;
+  // Graduation ticks on a circular arc spanning the whole sweep — a VU-meter
+  // style scale that rings the dial.
+  const ticks = $derived.by(() => {
     const half = size / 2;
-    const aMid = start + sweep * 0.5;
-    const [ox, oy] = edge(aMid, half, half - PAD);
-    const [ix, iy] = edge(aMid, half, half - PAD - 7);
-    return { ox, oy, ix, iy };
+    const rOut = half - FILL_PAD - 2;
+    const N = 12; // intervals → N+1 ticks
+    const out: { ox: number; oy: number; ix: number; iy: number }[] = [];
+    for (let i = 0; i <= N; i++) {
+      const deg = start + (sweep * i) / N;
+      const rad = (deg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const len = i % 2 === 0 ? 7 : 4.5; // alternate long/short graduations
+      out.push({
+        ox: half + cos * rOut,
+        oy: half + sin * rOut,
+        ix: half + cos * (rOut - len),
+        iy: half + sin * (rOut - len),
+      });
+    }
+    return out;
   });
+
 
   function set(v: number) {
     value = Math.min(max, Math.max(min, v));
@@ -144,16 +172,35 @@
   onkeydown={keydown}
 >
   <svg viewBox="0 0 {size} {size}" width={size} height={size}>
+    <defs>
+      <clipPath id={clipId}>
+        {#if shape === 'circle'}
+          <circle cx={size / 2} cy={size / 2} r={size / 2 - FILL_PAD} />
+        {:else}
+          <rect
+            x={FILL_PAD}
+            y={FILL_PAD}
+            width={size - FILL_PAD * 2}
+            height={size - FILL_PAD * 2}
+            rx={FILL_RADIUS}
+          />
+        {/if}
+      </clipPath>
+    </defs>
     {#if shape === 'circle'}
       <circle class="frame" cx={size / 2} cy={size / 2} r={size / 2 - PAD} />
     {:else}
-      <rect class="frame" x={PAD} y={PAD} width={size - PAD * 2} height={size - PAD * 2} rx="3" />
+      <rect class="frame" x={PAD} y={PAD} width={size - PAD * 2} height={size - PAD * 2} rx={RADIUS} />
     {/if}
-    {#if points}<polygon class="fill" {points} />{/if}
-    {#if centerMark}
-      <line class="center" x1={centerMark.ox} y1={centerMark.oy} x2={centerMark.ix} y2={centerMark.iy} />
+    {#each ticks as g}
+      <line class="gauge" x1={g.ox} y1={g.oy} x2={g.ix} y2={g.iy} />
+    {/each}
+    <!-- Wipe sits in front of the ticks (semi-transparent so they read through),
+         clipped to the frame so its corners follow the rounded edge. -->
+    {#if points}<polygon class="fill" {points} clip-path="url(#{clipId})" />{/if}
+    {#if showTick}
+      <line class="tick" x1={tick.c} y1={tick.c} x2={tick.x2} y2={tick.y2} />
     {/if}
-    <line class="tick" x1={tick.c} y1={tick.c} x2={tick.x2} y2={tick.y2} />
   </svg>
   {#if label}<span class="label">{label}</span>{/if}
 </button>
@@ -179,12 +226,13 @@
     stroke: var(--line);
     stroke-width: 2;
     transition: stroke var(--t-fast);
+    opacity: 0.65;
   }
   .knob:focus-visible { outline: none; }
   .knob:focus-visible .frame { stroke: var(--knob); }
-  .fill { fill: var(--knob); }
+  .fill { fill: var(--knob); opacity: 0.65; }
   .tick { stroke: var(--text); stroke-width: 2; stroke-linecap: round; }
-  .center { stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+  .gauge { stroke: var(--line); stroke-width: 1.5; stroke-linecap: round; opacity: 0.3; }
   .label {
     font-size: var(--fs-xs);
     letter-spacing: var(--track);
