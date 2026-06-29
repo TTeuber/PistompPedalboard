@@ -19,6 +19,48 @@
   let filter = $state(''); // catalogue search box
   let rigName = $state(''); // save-current-board-as-a-rig field
 
+  // Header chrome: the disclosure menu (pick a setlist) and inline rename.
+  let menuOpen = $state(false);
+  let renaming = $state(false);
+  let nameBeforeRename = ''; // snapshot so Escape can revert
+
+  // Last-saved snapshot the working state is diffed against to detect edits.
+  let baseName = $state('');
+  let baseRigs = $state<string[]>([]);
+  // An action parked behind the unsaved-changes prompt (null = no prompt open).
+  let pending = $state<null | (() => void | Promise<void>)>(null);
+  // Whether the delete-confirmation prompt is open.
+  let confirmingDelete = $state(false);
+
+  const sameList = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((x, i) => x === b[i]);
+  // True when the working name or rig order differs from the last save.
+  const dirty = $derived(name.trim() !== baseName.trim() || !sameList(rigs, baseRigs));
+
+  // Snapshot the current working state as the clean baseline.
+  function markClean() {
+    baseName = name;
+    baseRigs = [...rigs];
+  }
+  // Run `action` now, or park it behind the save/discard prompt if there are
+  // unsaved edits. Used by every "leave this setlist" path.
+  function guard(action: () => void | Promise<void>) {
+    menuOpen = false;
+    if (dirty) pending = action;
+    else action();
+  }
+  async function promptSave() {
+    const next = pending;
+    pending = null;
+    await save();
+    await next?.();
+  }
+  function promptDiscard() {
+    const next = pending;
+    pending = null;
+    next?.();
+  }
+
   // Catalogue filtered by the search box.
   const shown = $derived(
     rigState.allRigs.filter((r) => r.toLowerCase().includes(filter.trim().toLowerCase())),
@@ -29,23 +71,50 @@
     for (const r of rigs) m[r] = (m[r] ?? 0) + 1;
     return m;
   });
-  const dirty = $derived(sel !== '' || rigs.length > 0 || name.trim() !== '');
 
   onMount(() => {
     loadLists();
   });
 
   async function open(n: string) {
+    menuOpen = false;
+    renaming = false;
     if (!n) return newSetlist();
     const s = await api<Setlist>(`/api/setlist?name=${encodeURIComponent(n)}`);
     sel = s.name;
     name = s.name;
     rigs = s.rigs;
+    markClean();
   }
+  // New, empty setlist -- drop straight into the rename field so it gets a name.
   function newSetlist() {
     sel = '';
     name = '';
     rigs = [];
+    menuOpen = false;
+    markClean();
+    startRename();
+  }
+
+  // ---- title rename (inline) --------------------------------------------
+  // The pencil swaps the title for a text field; the name isn't written until
+  // Save (which renames the file on disk when it differs from the open one).
+  function startRename() {
+    nameBeforeRename = name;
+    menuOpen = false;
+    renaming = true;
+  }
+  function stopRename() {
+    renaming = false;
+  }
+  function cancelRename() {
+    name = nameBeforeRename;
+    renaming = false;
+  }
+  // Focus + select the field as soon as it mounts.
+  function autofocus(el: HTMLInputElement) {
+    el.focus();
+    el.select();
   }
 
   function addRig(r: string, at = rigs.length) {
@@ -60,11 +129,23 @@
   async function save() {
     const n = name.trim();
     if (!n) return;
+    const prev = sel; // the setlist this view was opened from (if any)
     await api('/api/setlist/save', { name: n, rigs });
+    // Renaming an existing setlist: the save wrote a new file, so drop the old.
+    if (prev && prev !== n) await api('/api/setlist/delete', { name: prev });
     sel = n;
+    name = n;
+    renaming = false;
+    markClean();
     await loadLists();
   }
+  function requestDelete() {
+    if (!sel) return;
+    menuOpen = false;
+    confirmingDelete = true;
+  }
   async function del() {
+    confirmingDelete = false;
     if (!sel) return;
     await api('/api/setlist/delete', { name: sel });
     newSetlist();
@@ -133,7 +214,16 @@
 <div class="view">
   <header>
     <h1>Setlists</h1>
-    <a class="back" href="#board">← Back to board</a>
+    <a
+      class="back"
+      href="#board"
+      onclick={(e) => {
+        e.preventDefault();
+        guard(() => {
+          location.hash = '#board';
+        });
+      }}>← Back to board</a
+    >
   </header>
 
   <div class="panes">
@@ -180,16 +270,78 @@
 
     <!-- RIGHT: the setlist being edited --------------------------------- -->
     <section class="pane setlist">
-      <div class="pane-head row">
-        <select class="picker" value={sel} onchange={(e) => open(e.currentTarget.value)}>
-          <option value="">＋ New setlist</option>
-          {#each rigState.setlistNames as n}
-            <option value={n}>{n}</option>
-          {/each}
-        </select>
-        <input class="search" type="text" placeholder="Setlist name…" bind:value={name} />
-        <button class="btn" onclick={save} disabled={!name.trim()}>Save</button>
-        <button class="btn danger" onclick={del} disabled={!sel}>Delete</button>
+      <div class="pane-head setlist-head">
+        {#if renaming}
+          <input
+            class="title-input"
+            type="text"
+            placeholder="Setlist name…"
+            bind:value={name}
+            use:autofocus
+            onkeydown={(e) => {
+              if (e.key === 'Enter') stopRename();
+              else if (e.key === 'Escape') cancelRename();
+            }}
+            onblur={stopRename}
+          />
+        {:else}
+          <div class="title-group">
+            <button
+              class="disclosure"
+              class:open={menuOpen}
+              class:placeholder={!name}
+              onclick={() => (menuOpen = !menuOpen)}
+              title="Choose a setlist"
+            >
+              <svg class="tri" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                <path d="M3 5.5h10L8 12z" fill="currentColor" />
+              </svg>
+              <span class="title">{name || 'New setlist'}</span>{#if dirty}<span
+                  class="star"
+                  title="Unsaved changes">*</span
+                >{/if}
+            </button>
+            <button class="icon-btn flat" onclick={startRename} title="Rename" aria-label="Rename">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+              </svg>
+            </button>
+          </div>
+        {/if}
+
+        <div class="actions">
+          <button class="icon-btn" onclick={() => guard(newSetlist)} title="New setlist" aria-label="New setlist">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+          <button class="icon-btn" onclick={save} disabled={!name.trim()} title="Save" aria-label="Save">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <path d="M17 21v-8H7v8M7 3v5h8" />
+            </svg>
+          </button>
+          <button class="icon-btn danger" onclick={requestDelete} disabled={!sel} title="Delete" aria-label="Delete">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              <path d="M10 11v6M14 11v6" />
+            </svg>
+          </button>
+        </div>
+
+        {#if menuOpen}
+          <button class="backdrop" aria-label="Close menu" onclick={() => (menuOpen = false)}></button>
+          <ul class="menu">
+            {#each rigState.setlistNames as n}
+              <li>
+                <button class:active={n === sel} onclick={() => guard(() => open(n))}>{n}</button>
+              </li>
+            {/each}
+            {#if !rigState.setlistNames.length}
+              <li class="empty">No setlists saved yet.</li>
+            {/if}
+          </ul>
+        {/if}
       </div>
 
       <!-- The drop target: rows reorder live; the line shows where a drop lands. -->
@@ -223,10 +375,40 @@
       </ol>
 
       <div class="pane-foot meta">
-        {rigs.length} rig{rigs.length === 1 ? '' : 's'}{#if dirty && !sel} · unsaved{/if}
+        {rigs.length} rig{rigs.length === 1 ? '' : 's'}{#if dirty} · unsaved changes{/if}
       </div>
     </section>
   </div>
+
+  {#if pending}
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-label="Unsaved changes">
+      <div class="modal">
+        <h3>Unsaved changes</h3>
+        <p>
+          You have unsaved changes to “{name.trim() || 'this setlist'}”. Save them before leaving?
+        </p>
+        <div class="modal-actions">
+          <button class="btn" onclick={() => (pending = null)}>Cancel</button>
+          <button class="btn danger" onclick={promptDiscard}>Discard</button>
+          <button class="btn primary" onclick={promptSave} disabled={!name.trim()}>Save</button>
+        </div>
+        {#if !name.trim()}<p class="hint">Name the setlist first to save it.</p>{/if}
+      </div>
+    </div>
+  {/if}
+
+  {#if confirmingDelete}
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-label="Delete setlist">
+      <div class="modal">
+        <h3>Delete setlist</h3>
+        <p>Delete “{sel}”? This can't be undone. (The rigs in it aren't affected.)</p>
+        <div class="modal-actions">
+          <button class="btn" onclick={() => (confirmingDelete = false)}>Cancel</button>
+          <button class="btn danger" onclick={del}>Delete</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -269,7 +451,137 @@
     padding: var(--sp-5) var(--sp-6);
     border-bottom: 1px solid var(--line);
   }
-  .pane-head.row { flex-direction: row; flex-wrap: wrap; align-items: center; }
+  /* Setlist pane header: title + disclosure menu on the left, actions right. */
+  .setlist-head {
+    position: relative;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-3);
+  }
+  .title-group { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+  .disclosure {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    min-width: 0;
+    background: none;
+    border: none;
+    padding: var(--sp-2) 0;
+    color: var(--text);
+    font: inherit;
+    font-size: var(--fs-lg);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .disclosure .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .disclosure.placeholder .title { color: var(--muted); font-weight: 500; }
+  .star { flex: 0 0 auto; color: var(--accent); margin-left: 1px; }
+  .disclosure:hover .title { color: var(--accent); }
+  .tri { flex: 0 0 auto; color: var(--muted); transition: transform var(--t-fast); }
+  .disclosure.open .tri { transform: rotate(180deg); }
+  .disclosure:hover .tri { color: var(--accent); }
+
+  .title-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: var(--inset);
+    color: var(--text);
+    border: 1px solid var(--accent);
+    border-radius: var(--r-sm);
+    padding: var(--sp-2) var(--sp-3);
+    font: inherit;
+    font-size: var(--fs-lg);
+    font-weight: 600;
+  }
+  .title-input:focus { outline: none; }
+
+  .actions { display: flex; align-items: center; gap: var(--sp-2); flex: 0 0 auto; }
+  .icon-btn {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    background: var(--inset);
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: color var(--t-fast), border-color var(--t-fast);
+  }
+  .icon-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+  .icon-btn.danger:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
+  .icon-btn:disabled { opacity: .4; cursor: default; }
+  .icon-btn.flat { width: 30px; height: 30px; background: none; border: none; }
+  .icon-btn.flat:hover { color: var(--accent); }
+
+  /* Disclosure dropdown: list of setlists to switch to. */
+  .backdrop { position: fixed; inset: 0; z-index: 15; background: none; border: none; cursor: default; }
+  .menu {
+    position: absolute;
+    top: calc(100% - var(--sp-3));
+    left: var(--sp-6);
+    z-index: 20;
+    min-width: 220px;
+    max-height: 320px;
+    overflow-y: auto;
+    list-style: none;
+    margin: 0;
+    padding: var(--sp-2);
+    background: var(--panel-2);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-md);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+  }
+  .menu li { list-style: none; }
+  .menu li button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text);
+    font: inherit;
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .menu li button:hover { background: var(--inset); }
+  .menu li button.active { color: var(--accent); }
+  .menu .empty { color: var(--muted); padding: var(--sp-3) var(--sp-4); font-size: var(--fs-sm); }
+
+  /* Unsaved-changes prompt shown when leaving a dirty setlist. */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, .55);
+    padding: var(--sp-5);
+  }
+  .modal {
+    width: min(420px, 100%);
+    background: var(--panel);
+    border: 1px solid var(--line-2);
+    border-radius: var(--r-lg);
+    padding: var(--sp-6);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, .5);
+  }
+  .modal h3 { margin: 0 0 var(--sp-3); font-size: var(--fs-lg); font-weight: 600; }
+  .modal p { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--sp-3);
+    margin-top: var(--sp-6);
+  }
+  .modal .hint { margin-top: var(--sp-3); color: var(--faint); font-size: var(--fs-xs); text-align: right; }
+
   h2 {
     font-size: var(--fs-sm);
     letter-spacing: var(--track-wide);
@@ -289,9 +601,9 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Inputs / selects / buttons share the inset-well chrome. */
-  .search,
-  .picker {
+  /* Inputs / buttons share the inset-well chrome. */
+  .search {
+    width: 100%;
     background: var(--inset);
     color: var(--text);
     border: 1px solid var(--line);
@@ -299,11 +611,7 @@
     padding: var(--sp-3) var(--sp-4);
     font: inherit;
   }
-  .search { width: 100%; }
-  .picker { flex: 0 0 auto; min-width: 150px; }
-  .pane-head.row .search { flex: 1 1 140px; width: auto; }
-  .search:focus,
-  .picker:focus { outline: none; border-color: var(--accent); }
+  .search:focus { outline: none; border-color: var(--accent); }
 
   .btn {
     flex: 0 0 auto;
@@ -318,8 +626,10 @@
     transition: border-color var(--t-fast), color var(--t-fast);
   }
   .btn:hover:not(:disabled) { border-color: var(--accent); }
-  .btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
   .btn:disabled { opacity: .4; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
 
   /* The scrolling list area each pane owns. */
   .list {
