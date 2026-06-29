@@ -65,20 +65,21 @@
     }
   }}
 >
-  <Switch vertical on={fx.enabled} label="Enable / disable {fx.name}" onclick={togglePower} />
-  <span class="icon"><FxIcon {kind} color={iconColor} /></span>
-  <span class="name">{fx.name}</span>
+  <div class="content">
+    <Switch vertical on={fx.enabled} label="Enable / disable {fx.name}" onclick={togglePower} />
+    <span class="icon"><FxIcon {kind} color={iconColor} /></span>
+    <span class="name">{fx.name}</span>
+  </div>
 </div>
 
 <style>
   /* Filled tile -- a resting fill lifts it clear of the page so an unselected
      pedal still reads as an object; the accent border + rail + brighter fill
-     mark selection. */
+     mark selection. The tile is a size container: its height (set by the grid
+     stretching its rows) drives the inner layout via the @container queries
+     below -- short stays horizontal, tall flips vertical. */
   .tile {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-3);
-    padding: var(--sp-3);
+    container-type: size;
     min-height: 78px;
     border: 1px solid var(--line);
     border-radius: var(--r-md);
@@ -91,7 +92,18 @@
   .tile.selected { border-color: var(--accent); background: var(--panel-2); box-shadow: inset 3px 0 0 var(--accent); }
   .tile.drag-over { border-color: var(--accent); border-style: dashed; }
 
+  /* Default (short tile): switch | icon | name in a row, filling the tile. */
+  .content {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+    height: 100%;
+    box-sizing: border-box;
+  }
+
   .icon { flex: 0 0 auto; display: flex; line-height: 0; }
+  .icon :global(svg) { transition: width var(--t-med), height var(--t-med); }
   .name {
     flex: 1;
     min-width: 0;
@@ -102,5 +114,33 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Tall tile: stack icon (top) / name (middle) / switch (bottom). DOM order is
+     switch, icon, name, so re-order with `order`; space-between pins the icon to
+     the top and the switch to the bottom while the name floats between. */
+  @container (min-height: 150px) {
+    .content {
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--sp-3);
+      padding: var(--sp-4);
+    }
+    .icon { order: 0; }
+    .icon :global(svg) { width: 40px; height: 40px; }
+    .name {
+      order: 1;
+      flex: 0 1 auto;
+      text-align: center;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+    .content :global(.switch) { order: 2; }
+  }
+
+  /* Extra-tall tile: room for a bigger symbol. */
+  @container (min-height: 230px) {
+    .icon :global(svg) { width: 56px; height: 56px; }
   }
 </style>

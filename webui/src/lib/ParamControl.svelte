@@ -19,9 +19,9 @@
   } = $props();
 
   // A couple of params render as something other than a slider, matching the
-  // device: a 0..1 unit-less value is an on/off toggle (e.g. Reverb "Freeze");
-  // an enumerated value is a dropdown.
-  const ENUMS: Record<string, string[]> = { type: ['Overdrive', 'Distortion', 'Fuzz'] };
+  // device: a 0..1 unit-less value is an on/off toggle (e.g. Reverb "Freeze"); an
+  // enumerated value is a dropdown -- keyed by param id (e.g. Tremolo's "shape").
+  const ENUMS: Record<string, string[]> = { shape: ['Sine', 'Square'] };
 
   // Local mirror of the param value. We send this to the device on input, and
   // adopt the device's value when it changes underneath us -- UNLESS the user is

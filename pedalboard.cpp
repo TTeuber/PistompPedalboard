@@ -26,13 +26,21 @@
 #include "effects/chorus.h"
 #include "effects/comp.h"
 #include "effects/delay.h"
-#include "effects/drive.h"
+#include "effects/distortion.h"
 #include "effects/eq.h"
+#include "effects/flanger.h"
+#include "effects/fuzz.h"
 #include "effects/gate.h"
 #include "effects/input_gain.h"
+#include "effects/octave.h"
 #include "effects/output_gain.h"
+#include "effects/overdrive.h"
+#include "effects/phaser.h"
 #include "effects/reverb.h"
+#include "effects/swell.h"
+#include "effects/tremolo.h"
 #include "effects/tuner.h"
+#include "effects/vibrato.h"
 #include "fx_factory.h"
 #include "pedal_controls.h"
 #include "rigs.h"
@@ -406,16 +414,28 @@ int main(int argc, char **argv) {
   g_chain.add(std::make_unique<fx::OutputGain>())->section = Section::Output;
 
   // The FX (middle) region is a fixed grid of slots the user fills at runtime,
-  // including duplicates of a kind -- so FX can't be singletons. Register each
-  // kind with the factory (the picker mints fresh instances on demand) and
-  // pre-fill the first slots so the default chain matches what shipped before.
-  g_fx.add("drive", "Drive", [] { return std::make_unique<fx::Drive>(); });
-  g_fx.add("chorus", "Chorus", [] { return std::make_unique<fx::Chorus>(); });
-  g_fx.add("delay", "Delay", [] { return std::make_unique<fx::Delay>(); });
-  g_fx.add("reverb", "Reverb", [] { return std::make_unique<fx::Reverb>(); });
-  for (size_t i = 0; i < g_fx.kinds().size(); i++)
-    g_chain.fxPlaceInitial((int)i,
-                           g_fx.create(i)); // canonical ids seed the factory
+  // including duplicates of a kind -- so FX can't be singletons. Register every
+  // kind with the factory (the picker mints fresh instances on demand). Order
+  // here is the order they appear in the "Add FX" picker.
+  g_fx.add("overdrive",  "Overdrive",  [] { return std::make_unique<fx::Overdrive>(); });
+  g_fx.add("distortion", "Distortion", [] { return std::make_unique<fx::Distortion>(); });
+  g_fx.add("fuzz",       "Fuzz",       [] { return std::make_unique<fx::Fuzz>(); });
+  g_fx.add("chorus",     "Chorus",     [] { return std::make_unique<fx::Chorus>(); });
+  g_fx.add("vibrato",    "Vibrato",    [] { return std::make_unique<fx::Vibrato>(); });
+  g_fx.add("tremolo",    "Tremolo",    [] { return std::make_unique<fx::Tremolo>(); });
+  g_fx.add("phaser",     "Phaser",     [] { return std::make_unique<fx::Phaser>(); });
+  g_fx.add("flanger",    "Flanger",    [] { return std::make_unique<fx::Flanger>(); });
+  g_fx.add("octave",     "Octave",     [] { return std::make_unique<fx::Octave>(); });
+  g_fx.add("swell",      "Auto-Swell", [] { return std::make_unique<fx::Swell>(); });
+  g_fx.add("delay",      "Delay",      [] { return std::make_unique<fx::Delay>(); });
+  g_fx.add("reverb",     "Reverb",     [] { return std::make_unique<fx::Reverb>(); });
+
+  // Pre-fill the first grid slots with a curated default chain (NOT every kind,
+  // which would overflow the 8-slot grid now that there are 11). The user can
+  // add/remove/reorder from there.
+  const char* kDefaultChain[] = {"overdrive", "chorus", "delay", "reverb"};
+  for (int slot = 0; slot < (int)(sizeof(kDefaultChain) / sizeof(char*)); slot++)
+    g_chain.fxPlaceInitial(slot, g_fx.create(kDefaultChain[slot]));
 
   // Partition prefix/suffix and publish the initial FX order for the audio
   // thread.

@@ -52,6 +52,15 @@ public:
     return fx;
   }
 
+  // Convenience: build a fresh instance of the kind with this canonical type
+  // (e.g. "reverb"). Returns nullptr if no such kind is registered. Used to seed
+  // the default chain by name rather than by fragile registration index.
+  std::unique_ptr<Effect> create(const std::string& type) {
+    for (size_t i = 0; i < kinds_.size(); i++)
+      if (kinds_[i].type == type) return create(i);
+    return nullptr;
+  }
+
   // Rebuild a saved instance: mint the named kind but force its stored type_id
   // (so a preset's params/footswitch state reattach by id). Bumps the per-kind
   // counter past this id's suffix so later picker-created instances can't

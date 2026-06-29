@@ -20,13 +20,47 @@
   stroke-linejoin="round"
   aria-hidden="true"
 >
-  {#if kind === 'drive'}
-    <!-- clipped waveform: a sine squashed flat at the rails (overdrive). -->
+  {#if kind === 'overdrive'}
+    <!-- clipped waveform: a sine softly squashed flat at the rails. -->
     <path d="M2 12h3l1-6h4l1 12h4l1-6h3" />
+  {:else if kind === 'distortion'}
+    <!-- harder clip: steeper, more squared-off than the overdrive. -->
+    <path d="M2 18h2l1-12h5l1 12h5l1-12h2" />
+  {:else if kind === 'fuzz'}
+    <!-- near-square wave: the most extreme, blocky clipping. -->
+    <path d="M2 16v-8h4v8h4v-8h4v8h4v-8h2" />
   {:else if kind === 'chorus'}
     <!-- two offset sine waves: the doubling/detune of modulation. -->
     <path d="M2 9q3-5 6 0t6 0 6 0" />
     <path d="M2 15q3-5 6 0t6 0 6 0" opacity="0.55" />
+  {:else if kind === 'vibrato'}
+    <!-- one continuous sine: the pure pitch wobble. -->
+    <path d="M2 12q2-6 4 0t4 0 4 0 4 0 4 0" />
+  {:else if kind === 'tremolo'}
+    <!-- amplitude pulse: bars rising and falling like a volume LFO. -->
+    <path d="M3 11v2" />
+    <path d="M8 8v8" />
+    <path d="M13 4v16" />
+    <path d="M18 8v8" />
+    <path d="M22 11v2" opacity="0.7" />
+  {:else if kind === 'phaser'}
+    <!-- a sweep passing through a moving notch. -->
+    <path d="M2 11q5 7 10 0t10 0" />
+    <path d="M12 4v16" opacity="0.45" stroke-dasharray="2 2" />
+  {:else if kind === 'flanger'}
+    <!-- comb filter: evenly spaced teeth of a swept comb. -->
+    <path d="M3 6v12" />
+    <path d="M8 6v12" opacity="0.8" />
+    <path d="M13 6v12" opacity="0.6" />
+    <path d="M18 6v12" opacity="0.4" />
+  {:else if kind === 'octave'}
+    <!-- two tones an octave apart: a low and a high cycle stacked. -->
+    <path d="M2 8q4-5 8 0t8 0" />
+    <path d="M2 17q2-3 4 0t4 0 4 0 4 0" opacity="0.6" />
+  {:else if kind === 'swell'}
+    <!-- a volume ramp swelling in from silence. -->
+    <path d="M3 19h18" opacity="0.4" />
+    <path d="M3 19c7 0 11-13 18-13" />
   {:else if kind === 'delay'}
     <!-- a tap and its decaying echoes. -->
     <path d="M4 5v14" />

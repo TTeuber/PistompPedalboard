@@ -45,8 +45,6 @@
     for (const e of board.effects) if (e.section === 'fx') bySlot[e.slot] = e;
     return Array.from({ length: board.fxSlotCount }, (_, s) => bySlot[s] ?? null);
   });
-  // First empty cell, for the header's "Add effect" button (-1 = board is full).
-  const firstEmptySlot = $derived(grid.findIndex((fx) => fx === null));
 
   // Which FX pedal the right-hand panel is editing. Tracked by the stable `type`
   // id so an SSE state swap (or a removed/reordered pedal) just falls back to the
@@ -125,7 +123,6 @@
            rides alongside, full height, so the board fits without scrolling. -->
       <div class="board-main">
         <section class="lane">
-          <!-- <h2 class="lane-title">Input</h2> -->
           <div class="rack">
             {#each inputFx as fx (fx.type)}
               <Pedal {fx} />
@@ -135,16 +132,6 @@
         </section>
 
         <section class="lane lane-fx">
-          <h2 class="lane-title">
-            FX <span class="lane-sub">tap a footswitch · drag a pedal to any cell</span>
-            <button
-              class="add-fx"
-              disabled={firstEmptySlot < 0}
-              title={firstEmptySlot < 0 ? 'All FX slots are full' : 'Add an effect'}
-              onclick={() => (addSlot = firstEmptySlot)}
-            >+ Add effect</button>
-          </h2>
-          <FootswitchBar />
           <div class="fx-grid">
             {#each grid as fx, slot (fx ? fx.type : `empty-${slot}`)}
               {#if fx}
@@ -158,10 +145,10 @@
               {/if}
             {/each}
           </div>
+          <FootswitchBar />
         </section>
 
         <section class="lane lane-out">
-          <!-- <h2 class="lane-title">Output</h2> -->
           <div class="rack">
             {#each outputFx as fx (fx.type)}
               <Pedal {fx} />
@@ -255,35 +242,6 @@
      the gutter inside each section; the border-top still spans the full padding
      box, so the rules run edge to edge (left rail to the panel divider). */
   .lane { min-width: 0; padding-left: var(--sp-5); padding-right: var(--sp-6); }
-  .lane-title {
-    font-size: var(--fs-sm);
-    margin: 0 0 var(--sp-3);
-    letter-spacing: var(--track-wide);
-    text-transform: uppercase;
-    color: var(--muted);
-    display: flex;
-    align-items: baseline;
-    gap: var(--sp-3);
-  }
-  .lane-sub { font-size: var(--fs-xs); letter-spacing: .2px; text-transform: none; color: var(--muted); opacity: .7; }
-
-  /* "Add effect" sits at the right end of the FX lane title. */
-  .add-fx {
-    margin-left: auto;
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    padding: var(--sp-2) var(--sp-3);
-    font-size: var(--fs-xs);
-    font-weight: 600;
-    letter-spacing: var(--track);
-    text-transform: none;
-    cursor: pointer;
-    transition: border-color var(--t-fast), color var(--t-fast);
-  }
-  .add-fx:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .add-fx:disabled { opacity: .4; cursor: default; }
 
   /* Each section's effects sit in one wrapping row, divided by thin rules. The
      items stretch to the full lane height so their dividers run edge to edge and
@@ -303,11 +261,28 @@
   .lane-fx,
   .lane-out { border-top: 1px solid var(--line); }
   /* FX grows to absorb the slack so Output is pinned to the bottom of the board;
-     it carries top + bottom padding since its content isn't a padded rack. */
-  .lane-fx { flex: 1 1 auto; padding-top: var(--sp-5); padding-bottom: var(--sp-5); }
+     it carries top + bottom padding since its content isn't a padded rack. The
+     column lets the grid take the slack while the footswitch bar stays pinned
+     below it. */
+  .lane-fx {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    padding-top: var(--sp-5);
+    padding-bottom: var(--sp-5);
+  }
 
-  /* FX grid: 4 columns, mirrors the device's 4x2 slot layout. */
-  .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-4); }
+  /* FX grid: 4 columns, mirrors the device's 4x2 slot layout. It fills the lane's
+     spare height and splits it evenly across rows (grid-auto-rows: 1fr) so the
+     tiles stretch to absorb the slack instead of leaving empty space below. The
+     taller tiles then flip to a vertical layout -- see FxTile. */
+  .fx-grid {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 1fr;
+    gap: var(--sp-4);
+  }
 
   @media (max-width: 1100px) {
     .board { grid-template-columns: 1fr; }

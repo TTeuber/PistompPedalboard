@@ -15,7 +15,7 @@
 #include "effects/tuner.h"
 #include "effects/gate.h"
 #include "effects/comp.h"
-#include "effects/drive.h"
+#include "effects/overdrive.h"
 #include "effects/amp_nam.h"
 #include "effects/eq.h"
 #include "effects/chorus.h"
@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
   chain.add(std::make_unique<fx::Comp>())->section = Section::Input;
   chain.add(std::make_unique<fx::AmpNam>(model.get(), "render"))->section = Section::Output;
   chain.add(std::make_unique<fx::EQ>())->section = Section::Output;
-  chain.fxPlaceInitial(0, std::make_unique<fx::Drive>());
+  chain.fxPlaceInitial(0, std::make_unique<fx::Overdrive>());
   chain.fxPlaceInitial(1, std::make_unique<fx::Chorus>());
   chain.fxPlaceInitial(2, std::make_unique<fx::Delay>());
   chain.fxPlaceInitial(3, std::make_unique<fx::Reverb>());

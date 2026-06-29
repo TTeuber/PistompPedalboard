@@ -34,7 +34,7 @@
 <style>
   /* Live footswitch bar: tap to toggle the same latches as the hardware stomps.
      Each switch carries its hardware NeoPixel colour via the inline --fs var. */
-  .fsbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-3); margin-bottom: var(--sp-4); }
+  .fsbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-3); margin-top: var(--sp-4); }
   .fsswitch {
     display: flex;
     flex-direction: column;

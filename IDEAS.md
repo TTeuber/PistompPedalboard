@@ -8,10 +8,6 @@
 - maybe a create from template option when creating a new rig
 - maybe setlists can have a dedicated template?
 
-## Level meters
-
-- peak line
-
 ## Knobs
 
 - remove line, just have the color wipe
@@ -21,10 +17,4 @@
 
 - instead of native one
 
-## FX
-
-- separate chorus and vibrato
-- separate overdrive, distortion, fuzz
-- volume pedal
-- auto swell
-- flanger, phaser, other fx
+## Tempo Sync
