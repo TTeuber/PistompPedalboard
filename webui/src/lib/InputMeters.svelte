@@ -56,11 +56,11 @@
   </div>
 
   <div class="meter">
+    <LevelBar value={meters.grDb} min={0} max={20} color="var(--warn)" fillFrom="end" />
     <div class="row">
       <span class="label">Gain Reduction</span>
       <span class="value">{meters.grDb.toFixed(1)} dB</span>
     </div>
-    <LevelBar value={meters.grDb} min={0} max={20} color="var(--warn)" fillFrom="end" />
   </div>
 </div>
 
@@ -70,11 +70,11 @@
     flex: 1 1 280px;
     min-width: 240px;
     align-self: stretch;
-    margin-left: auto;
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: var(--sp-5);
+    padding-block: var(--sp-5);
   }
   .meter { display: flex; flex-direction: column; gap: var(--sp-2); }
   .row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }

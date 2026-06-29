@@ -23,7 +23,7 @@ export const status = $state({ dspPermille: 0, xruns: 0, live: false });
 // Live audio levels for the input/output meters. Like telemetry, kept OUT of the
 // SSE state stream (it changes every audio block) and polled on a fast timer; the
 // device clears its peak holds on each read, so these fall back between polls.
-export const meters = $state<Meters>({ inputDb: -60, outputDb: -60, grDb: 0 });
+export const meters = $state<Meters>({ inputDb: -60, outputDbL: -60, outputDbR: -60, grDb: 0 });
 
 // Per-pedal preset NAMES, cached by pedal KIND ("drive", "reverb", ...). Every
 // instance of a kind shares one list; we (re)fetch lazily and after edits.
@@ -111,7 +111,8 @@ export async function pollMeters(): Promise<void> {
   try {
     const m = await api<Meters>('/api/meters');
     meters.inputDb = m.inputDb;
-    meters.outputDb = m.outputDb;
+    meters.outputDbL = m.outputDbL;
+    meters.outputDbR = m.outputDbR;
     meters.grDb = m.grDb;
   } catch {
     /* transient -- try again next tick */

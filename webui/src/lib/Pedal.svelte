@@ -45,7 +45,10 @@
 </div>
 
 <style>
-  .pedal { min-width: 0; transition: opacity var(--t-med); }
+  /* Vertical padding is the gutter that clears the section rules above/below; the
+     box itself stretches to the full lane height so its left divider runs edge to
+     edge. */
+  .pedal { min-width: 0; padding: var(--sp-5) 0; transition: opacity var(--t-med); }
   .pedal.off { opacity: .5; }
   .pedal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-3); }
 

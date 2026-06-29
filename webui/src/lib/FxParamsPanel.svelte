@@ -5,6 +5,7 @@
   import ParamControl from './ParamControl.svelte';
   import AssignStrip from './AssignStrip.svelte';
   import PedalPresets from './PedalPresets.svelte';
+  import Switch from './controls/Switch.svelte';
 
   // The currently selected FX pedal, or null when nothing is selected.
   let { fx }: { fx: Effect | null } = $props();
@@ -26,13 +27,7 @@
   {#if fx}
     <div class="panel-head">
       <h3>{fx.name}</h3>
-      <button
-        class="power"
-        class:on={fx.enabled}
-        title="Enable / disable"
-        aria-label="Enable / disable {fx.name}"
-        onclick={togglePower}
-      ></button>
+      <Switch on={fx.enabled} label="Enable / disable {fx.name}" onclick={togglePower} />
     </div>
 
     <PedalPresets {fx} />
@@ -59,16 +54,6 @@
     text-transform: uppercase;
     color: var(--accent);
   }
-  .power {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    border: 2px solid var(--line);
-    background: var(--inset);
-    cursor: pointer;
-  }
-  .power.on { border-color: var(--ok); box-shadow: var(--glow) var(--ok); background: var(--ok); }
-
   .remove { width: 100%; margin-top: var(--sp-4); }
 
   .empty {

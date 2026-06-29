@@ -25,6 +25,8 @@
   import SetlistEditor from './lib/SetlistEditor.svelte';
   import Experiments from './lib/Experiments.svelte';
   import AddFxModal from './lib/AddFxModal.svelte';
+  import Fader from './lib/controls/Fader.svelte';
+  import Button from './lib/controls/Button.svelte';
 
   let tunerOpen = $state(false);
   // The FX slot the add-effect modal will fill, or null when it's closed.
@@ -74,12 +76,8 @@
   });
 
   function setMaster(v: number) {
-    board.master = v / 100;
-    api('/api/master', { value: v / 100 }).catch(console.error);
-  }
-  function toggleBypass() {
-    board.bypassed = !board.bypassed;
-    api('/api/bypass', { bypassed: board.bypassed }).catch(console.error);
+    board.master = v;
+    api('/api/master', { value: v }).catch(console.error);
   }
 </script>
 
@@ -101,19 +99,19 @@
     <div class="globals">
       <span class="telemetry">{telem}</span>
       <TunerButton active={tunerOpen} onclick={() => (tunerOpen = true)} />
-      <a class="lab" href="#experiments" title="Component sandbox">Lab</a>
-      <button class="bypass" class:active={board.bypassed} onclick={toggleBypass}>Bypass</button>
-      <label class="master">
-        Master <output>{masterPct}%</output>
-        <input
-          type="range"
-          min="0"
-          max="200"
-          step="1"
-          value={masterPct}
-          oninput={(e) => setMaster(+e.currentTarget.value)}
+      <Button href="#experiments" title="Component sandbox">Lab</Button>
+      <div class="master">
+        <span class="master-label">Master</span>
+        <Fader
+          value={board.master}
+          min={0}
+          max={2}
+          length={130}
+          thickness={20}
+          oninput={setMaster}
         />
-      </label>
+        <output>{masterPct}%</output>
+      </div>
     </div>
   </header>
 
@@ -223,32 +221,9 @@
 
   .globals { display: flex; align-items: center; gap: var(--sp-5); }
   .telemetry { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); color: var(--muted); }
-  .lab {
-    color: var(--muted);
-    text-decoration: none;
-    font-size: var(--fs-sm);
-    font-weight: 600;
-    letter-spacing: var(--track-wide);
-    text-transform: uppercase;
-    padding: var(--sp-2) var(--sp-3);
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    transition: color var(--t-fast), border-color var(--t-fast);
-  }
-  .lab:hover { color: var(--accent); border-color: var(--accent); }
   .master { display: flex; align-items: center; gap: var(--sp-3); color: var(--muted); font-size: var(--fs-sm); }
-  .master output { color: var(--text); min-width: 42px; text-align: right; }
-  .master input { width: 130px; }
-  .bypass {
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--line);
-    padding: var(--sp-3) var(--sp-5);
-    border-radius: var(--r-sm);
-    cursor: pointer;
-    font-weight: 600;
-  }
-  .bypass.active { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .master-label { letter-spacing: var(--track); text-transform: uppercase; font-size: var(--fs-xs); }
+  .master output { color: var(--text); min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
 
   /* The body row: the sidebar floats over the board (position:absolute within
      this relative box), so the board always spans the full width and only the
@@ -263,14 +238,23 @@
     overflow-y: auto;
     display: grid;
     grid-template-columns: 1fr minmax(260px, 320px);
-    gap: var(--sp-5);
-    padding: var(--sp-5) var(--sp-6);
-    padding-left: calc(46px + var(--sp-5));
+    /* No grid gap: the dividers do the separating, so the right-hand panel's
+       border-left meets the lanes' border-tops with no gap at the corners.
+       Breathing room comes from each bordered box's own padding instead. */
+    gap: 0;
+    /* No outer padding: the dividers run all the way to the viewport edges. Only
+       the collapsed sidebar rail is reserved on the left; every gutter is now
+       internal to the bordered boxes (lanes/panel) so content still breathes. */
+    padding: 0;
+    padding-left: 46px;
   }
-  .board-main { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-5); }
-  .board :global(.panel) { border-left: 1px solid var(--line); padding-left: var(--sp-5); }
-  /* Sections are no longer cards -- just titled groups. */
-  .lane { min-width: 0; }
+  /* Fill the board's height so the FX lane can grow and pin Output to the bottom. */
+  .board-main { min-width: 0; min-height: 100%; display: flex; flex-direction: column; }
+  .board :global(.panel) { border-left: 1px solid var(--line); padding: var(--sp-5) var(--sp-6); }
+  /* Sections are no longer cards -- just titled groups. The left/right padding is
+     the gutter inside each section; the border-top still spans the full padding
+     box, so the rules run edge to edge (left rail to the panel divider). */
+  .lane { min-width: 0; padding-left: var(--sp-5); padding-right: var(--sp-6); }
   .lane-title {
     font-size: var(--fs-sm);
     margin: 0 0 var(--sp-3);
@@ -301,13 +285,26 @@
   .add-fx:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   .add-fx:disabled { opacity: .4; cursor: default; }
 
-  /* Each section's effects sit in one wrapping row, divided by thin rules. */
-  .rack { display: flex; flex-wrap: wrap; gap: var(--sp-5); align-items: flex-start; }
-  .rack :global(.pedal:not(:first-child)) { border-left: 1px solid var(--line); padding-left: var(--sp-5); }
+  /* Each section's effects sit in one wrapping row, divided by thin rules. The
+     items stretch to the full lane height so their dividers run edge to edge and
+     meet the horizontal section rules above/below (no gaps). */
+  .rack { display: flex; flex-wrap: wrap; gap: var(--sp-5); align-items: stretch; }
+  /* Direct children only -- the inner .meter rows inside InputMeters must not pick
+     up a divider. The meters get a divider too (input level after the comp,
+     output level after the output gain). */
+  .rack > :global(.pedal:not(:first-child)),
+  .rack > :global(.meters),
+  .rack > :global(.meter) { border-left: 1px solid var(--line); padding-left: var(--sp-5); }
 
-  /* Stack order is Input, FX, Output -- each separated from the last by a rule. */
+  /* Stack order is Input, FX, Output -- each separated from the last by a rule.
+     No padding-top here: the rule sits flush at the lane edge so the racks'
+     vertical dividers touch it; the lanes' own content carries the gutter (the
+     FX title needs an explicit one since it isn't a padded rack item). */
   .lane-fx,
-  .lane-out { border-top: 1px solid var(--line); padding-top: var(--sp-5); }
+  .lane-out { border-top: 1px solid var(--line); }
+  /* FX grows to absorb the slack so Output is pinned to the bottom of the board;
+     it carries top + bottom padding since its content isn't a padded rack. */
+  .lane-fx { flex: 1 1 auto; padding-top: var(--sp-5); padding-bottom: var(--sp-5); }
 
   /* FX grid: 4 columns, mirrors the device's 4x2 slot layout. */
   .fx-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-4); }

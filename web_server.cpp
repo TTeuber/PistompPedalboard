@@ -145,16 +145,18 @@ void WebServer::setupRoutes() {
   // every audio block, so they ride a fast poll -- NOT the SSE state stream
   // (which would re-render the whole board). Every read CLEARS the peak holds so
   // the meters fall back naturally between polls (and a disabled gate/comp decays
-  // to zero reduction). inputDb/outputDb are dBFS (-60 floor); grDb is the shared
-  // input-section gain reduction: gate + comp summed (the louder channel feeds
-  // the level meters; the signal is mono at this point anyway).
+  // to zero reduction). inputDb/outputDbL/outputDbR are dBFS (-60 floor); grDb is
+  // the shared input-section gain reduction: gate + comp summed. Input is mono at
+  // the meter tap (louder channel); the output is stereo, so it gets L/R bars.
   svr_->Get("/api/meters", [this](const httplib::Request&, httplib::Response& res) {
     float inPk  = std::max(ctl_.inPeakWeb[0].exchange(0.0f), ctl_.inPeakWeb[1].exchange(0.0f));
-    float outPk = std::max(ctl_.outPeak[0].exchange(0.0f), ctl_.outPeak[1].exchange(0.0f));
+    float outL  = ctl_.outPeak[0].exchange(0.0f);
+    float outR  = ctl_.outPeak[1].exchange(0.0f);
     float gr = 0.0f;
     if (auto* g = dynamic_cast<fx::Gate*>(chain_.find("gate"))) gr += g->takeGrDb();
     if (auto* c = dynamic_cast<fx::Comp*>(chain_.find("comp"))) gr += c->takeGrDb();
-    json m = {{"inputDb", dbfs(inPk)}, {"outputDb", dbfs(outPk)}, {"grDb", gr}};
+    json m = {{"inputDb", dbfs(inPk)},
+              {"outputDbL", dbfs(outL)}, {"outputDbR", dbfs(outR)}, {"grDb", gr}};
     res.set_content(m.dump(), "application/json");
   });
 

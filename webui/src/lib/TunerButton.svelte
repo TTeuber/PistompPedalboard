@@ -1,36 +1,26 @@
 <script lang="ts">
   // Top-bar tuner trigger. Presentational: App owns the open state and renders the
   // modal (which does the real engage/mute). Lit when the tuner overlay is open.
+  import Button from './controls/Button.svelte';
   let { active = false, onclick }: { active?: boolean; onclick: () => void } = $props();
 </script>
 
-<button class="tuner" class:engaged={active} title="Tuner — silent tuning" {onclick}>
-  <span class="ico">♪</span>
+<Button {active} toggle title="Tuner — silent tuning" {onclick}>
+  <!-- Tuning fork: two prongs joined by a rounded base, with a stem below. -->
+  <svg
+    class="ico"
+    viewBox="0 0 24 24"
+    width="15"
+    height="15"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M8 3 v7 a4 4 0 0 0 8 0 V3" />
+    <path d="M12 14 v7" />
+  </svg>
   Tuner
-</button>
-
-<style>
-  .tuner {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--sp-2);
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    padding: var(--sp-3) var(--sp-4);
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-    transition: color var(--t-fast), border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast);
-  }
-  .tuner .ico { color: var(--muted); transition: color var(--t-fast); }
-  .tuner:hover { border-color: var(--accent); }
-  .tuner.engaged {
-    background: var(--accent);
-    color: var(--ink);
-    border-color: var(--accent);
-    box-shadow: var(--glow) var(--accent);
-  }
-  .tuner.engaged .ico { color: var(--ink); }
-</style>
+</Button>

@@ -50,7 +50,8 @@ export interface Telemetry {
 // input-section gain reduction (gate + comp summed), in dB.
 export interface Meters {
   inputDb: number;
-  outputDb: number;
+  outputDbL: number;
+  outputDbR: number;
   grDb: number;
 }
 

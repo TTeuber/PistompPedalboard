@@ -6,6 +6,7 @@
   //   New  -- always names a brand-new rig from the live board.
   // Naming uses a small themed modal rather than the browser's prompt().
   import { rigState, step, saveRig } from './rigs.svelte.js';
+  import Button from './controls/Button.svelte';
 
   let asking = $state(false);
   let draft = $state('');
@@ -54,19 +55,15 @@
   <span class="now-playing" class:none={!rigState.activeRig} title="Current rig">
     {rigState.activeRig || 'No rig loaded'}
   </span>
-  <button class="step" title="Previous rig" disabled={!rigState.viewRigs.length} onclick={() => step(-1)}
-    >◀</button
-  >
-  <button class="step" title="Next rig" disabled={!rigState.viewRigs.length} onclick={() => step(1)}
-    >▶</button
-  >
-  <button
-    class="btn"
-    class:flash={saved}
+  <Button square title="Previous rig" disabled={!rigState.viewRigs.length} onclick={() => step(-1)}>◀</Button>
+  <Button square title="Next rig" disabled={!rigState.viewRigs.length} onclick={() => step(1)}>▶</Button>
+  <Button
+    active={saved}
+    color="var(--ok)"
     title={rigState.activeRig ? `Save “${rigState.activeRig}”` : 'Save current board as a rig'}
-    onclick={clickSave}>{saved ? 'Saved ✓' : 'Save rig'}</button
+    onclick={clickSave}>{saved ? 'Saved ✓' : 'Save rig'}</Button
   >
-  <button class="btn" title="Save the current board as a new rig" onclick={clickNew}>New rig</button>
+  <Button title="Save the current board as a new rig" onclick={clickNew}>New rig</Button>
 </div>
 
 {#if asking}
@@ -105,22 +102,8 @@
   }
   .now-playing.none { color: var(--faint); font-weight: 500; font-style: italic; }
 
-  .step {
-    width: 30px;
-    height: 30px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--line);
-    border-radius: var(--r-sm);
-    cursor: pointer;
-    font-size: var(--fs-sm);
-  }
-  .step:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-  .step:disabled { opacity: .4; cursor: default; }
-
+  /* .btn here now styles only the name-modal's Cancel / Save (the top-bar rig
+     buttons use the shared Button control). */
   .btn {
     background: var(--panel-2);
     color: var(--text);
@@ -134,7 +117,6 @@
   }
   .btn:hover:not(:disabled) { border-color: var(--accent); }
   .btn:disabled { opacity: .4; cursor: default; }
-  .btn.flash { border-color: var(--ok); color: var(--ok); }
 
   /* Name modal -- matches the tuner overlay's blurred-backdrop language. */
   .backdrop {

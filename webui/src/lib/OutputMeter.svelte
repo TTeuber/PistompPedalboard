@@ -1,38 +1,54 @@
 <script lang="ts">
-  // The output section's level meter: a single dBFS bar, post-master. Same fast
-  // /api/meters poll and the same green/amber/red policy as the input level
-  // (input_vu.h: warn -12 dBFS, clip -1 dBFS) so clipping at the output reads red.
+  // The output section's level meters: one dBFS bar per channel (L over R),
+  // post-master. Same fast /api/meters poll and the same green/amber/red policy
+  // as the input level (input_vu.h: warn -12 dBFS, clip -1 dBFS) so clipping at
+  // the output reads red. The lower (R) meter wears its label underneath so the
+  // pair's captions bracket the group.
   import { meters } from './store.svelte.js';
   import LevelBar from './controls/LevelBar.svelte';
   import { usePeakHold } from './controls/peakHold.svelte.js';
 
   const FLOOR = -60;
-  const levelColor = $derived(
-    meters.outputDb >= -1 ? 'var(--danger)' : meters.outputDb >= -12 ? 'var(--warn)' : 'var(--ok)',
-  );
+  const colorFor = (db: number) =>
+    db >= -1 ? 'var(--danger)' : db >= -12 ? 'var(--warn)' : 'var(--ok)';
   const fmtDb = (v: number) => (v <= FLOOR + 0.5 ? '−∞' : v.toFixed(1));
 
-  const outPeak = usePeakHold(() => meters.outputDb, FLOOR);
+  const lColor = $derived(colorFor(meters.outputDbL));
+  const rColor = $derived(colorFor(meters.outputDbR));
+  const lPeak = usePeakHold(() => meters.outputDbL, FLOOR);
+  const rPeak = usePeakHold(() => meters.outputDbR, FLOOR);
 </script>
 
-<div class="meter">
-  <div class="row">
-    <span class="label">Output</span>
-    <span class="value">{fmtDb(meters.outputDb)} dB</span>
+<div class="meters">
+  <div class="meter">
+    <div class="row">
+      <span class="label">Output L</span>
+      <span class="value">{fmtDb(meters.outputDbL)} dB</span>
+    </div>
+    <LevelBar value={meters.outputDbL} min={FLOOR} max={0} color={lColor} peak={lPeak.value} />
   </div>
-  <LevelBar value={meters.outputDb} min={FLOOR} max={0} color={levelColor} peak={outPeak.value} />
+
+  <div class="meter">
+    <LevelBar value={meters.outputDbR} min={FLOOR} max={0} color={rColor} peak={rPeak.value} />
+    <div class="row">
+      <span class="label">Output R</span>
+      <span class="value">{fmtDb(meters.outputDbR)} dB</span>
+    </div>
+  </div>
 </div>
 
 <style>
-  .meter {
+  .meters {
     flex: 1 1 280px;
     min-width: 240px;
-    align-self: center;
-    margin-left: auto;
+    align-self: stretch;
     display: flex;
     flex-direction: column;
-    gap: var(--sp-2);
+    justify-content: center;
+    gap: var(--sp-5);
+    padding-block: var(--sp-5);
   }
+  .meter { display: flex; flex-direction: column; gap: var(--sp-2); }
   .row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
   .label {
     font-size: var(--fs-xs);
