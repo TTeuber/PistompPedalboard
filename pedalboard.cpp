@@ -516,6 +516,28 @@ int main(int argc, char **argv) {
          "Nav encoder=navigate, enc1=back, enc3=master. Ctrl-C to stop.\n",
          period, acfg.rtPriority);
 
+  // Bring audio up on a config: reopen on whichever chosen devices are present
+  // (none -> idle), re-prepare the chain for the (possibly new) block size, and
+  // restart the RT callback. Shared by the Settings switch and the reconnect
+  // poll below. (reopen() stops the running device internally first.)
+  auto bringUpAudio = [&](const pistomp::AudioConfig &c) -> bool {
+    if (!audio.reopen(c))
+      return false;
+    int p = audio.period();
+    g_chain.prepare((double)c.rate, p);
+    return audio.start(makeAudioCallback((double)p / c.rate));
+  };
+  // Sentinels shown in the device dropdowns for "no device on this side".
+  const std::string kNoInput = "No Input";
+  const std::string kNoOutput = "No Output";
+  auto deviceListed = [](const std::vector<pistomp::AudioDeviceInfo> &ds,
+                         const std::string &name) {
+    for (const auto &d : ds)
+      if (d.name == name)
+        return true;
+    return false;
+  };
+
   // --- macOS Settings… menu: pick input/output device, rate, buffer size,
   // live. No-op on the Pi (settings_menu_stub). The model's getters read the
   // current AudioIO state; apply() switches devices/format without dropping the
@@ -524,68 +546,95 @@ int main(int argc, char **argv) {
   // up (the loop's audio.running() guard would otherwise exit the app). All of
   // this runs on the main thread, nested in the SDL/Cocoa event pump. ---
   {
-    auto names = [](const std::vector<pistomp::AudioDeviceInfo> &ds) {
-      std::vector<std::string> v;
-      v.reserve(ds.size());
+    // Build a dropdown list: the "no device" sentinel, then the live devices,
+    // then -- if the remembered choice is currently disconnected -- the chosen
+    // name itself, so a DAW-style "selected but unplugged" device stays visible
+    // and selected instead of silently vanishing from the menu.
+    auto deviceList = [&](const std::vector<pistomp::AudioDeviceInfo> &ds,
+                          const std::string &sentinel,
+                          const std::string &chosen) {
+      std::vector<std::string> v{sentinel};
       for (const auto &d : ds)
         v.push_back(d.name);
+      if (!chosen.empty() &&
+          std::find(v.begin(), v.end(), chosen) == v.end())
+        v.push_back(chosen);
       return v;
     };
-    auto defaultName = [](const std::vector<pistomp::AudioDeviceInfo> &ds) {
-      for (const auto &d : ds)
-        if (d.isDefault)
-          return d.name;
-      return std::string{};
-    };
     sim_menu::Model m;
-    m.inputs = [&] { return names(audio.captureDevices()); };
-    m.outputs = [&] { return names(audio.playbackDevices()); };
+    m.inputs = [&] {
+      return deviceList(audio.captureDevices(), kNoInput, acfg.captureName);
+    };
+    m.outputs = [&] {
+      return deviceList(audio.playbackDevices(), kNoOutput, acfg.playbackName);
+    };
     m.rates = [] { return std::vector<int>{44100, 48000, 96000}; };
     m.buffers = [] { return std::vector<int>{32, 64, 128, 256, 512}; };
-    // Empty stored name = follow the system default; show that device selected.
+    // Show the remembered choice (empty = the "no device" sentinel), not the
+    // momentarily-active device -- the selection sticks across unplug/replug.
     m.currentInput = [&] {
-      return acfg.captureName.empty() ? defaultName(audio.captureDevices())
-                                      : acfg.captureName;
+      return acfg.captureName.empty() ? kNoInput : acfg.captureName;
     };
     m.currentOutput = [&] {
-      return acfg.playbackName.empty() ? defaultName(audio.playbackDevices())
-                                       : acfg.playbackName;
+      return acfg.playbackName.empty() ? kNoOutput : acfg.playbackName;
     };
     m.currentRate = [&] { return (int)acfg.rate; };
     m.currentBuffer = [&] { return (int)acfg.wantPeriod; };
     m.apply = [&](const std::string &in, const std::string &out, int rate,
                   int buffer) -> bool {
-      auto bringUp = [&](const pistomp::AudioConfig &c) -> bool {
-        if (!audio.reopen(c))
-          return false;
-        int p = audio.period();
-        g_chain.prepare((double)c.rate, p);
-        return audio.start(makeAudioCallback((double)p / c.rate));
-      };
       pistomp::AudioConfig prev = acfg;
-      audio.stop();
-      acfg.captureName = in;
-      acfg.playbackName = out;
+      // Map the sentinels back to "no device" (empty name). A real name that's
+      // currently disconnected just opens closed -- not an error.
+      acfg.captureName = (in == kNoInput) ? std::string{} : in;
+      acfg.playbackName = (out == kNoOutput) ? std::string{} : out;
       acfg.rate = (unsigned)rate;
       acfg.wantPeriod = (unsigned)buffer;
-      if (bringUp(acfg)) {
+      if (bringUpAudio(acfg)) {
         saveAudioSettings(audioCfgPath(base), acfg);
         return true;
       }
       fprintf(stderr, "audio switch failed (%s); reverting\n",
               audio.lastError());
       acfg = prev;
-      bringUp(acfg); // best-effort restore so the app keeps running
+      bringUpAudio(acfg); // best-effort restore so the app keeps running
       return false;
     };
     sim_menu::install(m);
   }
 
   // --- UI / LED loop (~50 Hz) ---
+  auto nextDeviceCheck = std::chrono::steady_clock::now();
   while (g_ctl.running.load() && audio.running()) {
     lv_timer_handler();
     g_ctl.xruns.store(audio.xruns(),
                       std::memory_order_relaxed); // bridge to web telemetry
+
+    // Device reconnect poll (~1 Hz): re-attach a chosen device when it
+    // (re)appears and drop it when unplugged -- without ever substituting a
+    // different one. Runs on the main thread, where reopen() is safe (same path
+    // as the Settings switch). No-op unless the active set actually changed, so
+    // steady state costs only an enumeration.
+    auto nowt = std::chrono::steady_clock::now();
+    if (nowt >= nextDeviceCheck) {
+      nextDeviceCheck = nowt + std::chrono::seconds(1);
+      bool wantCap = !acfg.captureName.empty() &&
+                     deviceListed(audio.captureDevices(), acfg.captureName);
+      bool wantPlay = !acfg.playbackName.empty() &&
+                      deviceListed(audio.playbackDevices(), acfg.playbackName);
+      if (wantCap != audio.captureActive() ||
+          wantPlay != audio.playbackActive()) {
+        if (!bringUpAudio(acfg)) {
+          // A present device failed to init (rare). Fall back to idle so the app
+          // stays up; the next tick retries the chosen device.
+          fprintf(stderr, "audio reconnect failed (%s); staying idle\n",
+                  audio.lastError());
+          pistomp::AudioConfig idle = acfg;
+          idle.captureName.clear();
+          idle.playbackName.clear();
+          bringUpAudio(idle);
+        }
+      }
+    }
     tuner->analyze(); // non-RT pitch detection (no-op while disengaged)
     UiEvent ev;
     while (g_events.pop(ev))
