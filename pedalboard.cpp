@@ -107,6 +107,7 @@ static const int MAX_FRAMES = 8192;
 // RELEASE so a hold doesn't also fire a tap).
 static const std::chrono::milliseconds FS_TUNER_HOLD{2000}; // hold FS3 -> tuner
 static const std::chrono::milliseconds QUIT_HOLD{2000}; // hold NAV -> launcher
+static const std::chrono::milliseconds FS_COMBO_WINDOW{45}; // catch a two-foot stomp
 
 static const int WEB_PORT = 8080;
 
@@ -159,11 +160,16 @@ static void input_loop() {
        navDownPrev = false;
   std::chrono::steady_clock::time_point navStart;
 
-  // FS3 is dual-function (tap = footswitch, hold = tuner), so it acts on
-  // RELEASE: a release before FS_TUNER_HOLD is a tap; passing the threshold
-  // fires the hold and suppresses the tap. FS0..2 are plain press-edge taps.
-  bool fs3DownPrev = false, fs3HoldFired = false;
-  std::chrono::steady_clock::time_point fs3Start;
+  // Footswitches drive taps, the FS3 tuner-hold, and two-switch rig combos. A
+  // tap is DEFERRED by FS_COMBO_WINDOW so a near-simultaneous two-foot stomp
+  // registers as a combo (FS1+FS2 = previous rig, FS3+FS4 = next rig) instead of
+  // toggling both effects. FS3 keeps its dual role: tap on release, hold -> tuner.
+  bool fsDown[4] = {false, false, false, false};
+  bool fsDownPrev[4] = {false, false, false, false};
+  bool fsPending[4] = {false, false, false, false};   // tap awaiting window/combo
+  bool fsConsumed[4] = {false, false, false, false};  // suppressed: went to a combo
+  std::chrono::steady_clock::time_point fsStart[4];
+  bool fs3HoldFired = false;
 
   while (g_ctl.running.load()) {
     if (int d = navEnc.poll())
@@ -177,23 +183,62 @@ static void input_loop() {
     if (enc1Btn.poll_pressed_edge())
       g_events.push({UiEvent::Back, 0});
 
-    for (int i = 0; i < 3; i++)
-      if (fs[i].poll_pressed_edge())
-        g_events.push({UiEvent::Footswitch, (int8_t)i});
+    auto fsNow = std::chrono::steady_clock::now();
+    for (int i = 0; i < 4; i++)
+      fsDown[i] = fs[i].is_pressed();
 
-    bool fs3Down = fs[3].is_pressed();
-    if (fs3Down && !fs3DownPrev) {
-      fs3HoldFired = false;
-      fs3Start = std::chrono::steady_clock::now();
+    // Press edges: arm a deferred tap.
+    for (int i = 0; i < 4; i++)
+      if (fsDown[i] && !fsDownPrev[i]) {
+        fsStart[i] = fsNow;
+        fsPending[i] = true;
+        fsConsumed[i] = false;
+        if (i == 3) fs3HoldFired = false;
+      }
+
+    // Combos: both members of a pair still pending -> step the rig and eat both
+    // taps. Pairs are (FS1,FS2) = previous rig and (FS3,FS4) = next rig.
+    for (int p = 0; p < 4; p += 2) {
+      int a = p, b = p + 1;
+      if (fsDown[a] && fsDown[b] && fsPending[a] && fsPending[b]) {
+        g_events.push({UiEvent::RigStep, (int8_t)(p == 0 ? -1 : +1)});
+        fsPending[a] = fsPending[b] = false;
+        fsConsumed[a] = fsConsumed[b] = true;
+      }
     }
-    if (!fs3Down && fs3DownPrev && !fs3HoldFired)
-      g_events.push({UiEvent::Footswitch, 3}); // tap on release
-    if (fs3Down && !fs3HoldFired &&
-        std::chrono::steady_clock::now() - fs3Start >= FS_TUNER_HOLD) {
-      g_events.push({UiEvent::FsHold, 3}); // hold -> tuner
-      fs3HoldFired = true;
+
+    // FS0..2: a tap fires once the combo window lapses (still held) or on an
+    // earlier release; never when a combo already consumed it.
+    for (int i = 0; i < 3; i++) {
+      if (fsPending[i] && fsNow - fsStart[i] >= FS_COMBO_WINDOW) {
+        g_events.push({UiEvent::Footswitch, (int8_t)i});
+        fsPending[i] = false;
+      }
+      if (!fsDown[i] && fsDownPrev[i]) {
+        if (fsPending[i]) g_events.push({UiEvent::Footswitch, (int8_t)i});
+        fsPending[i] = false;
+        fsConsumed[i] = false;
+      }
     }
-    fs3DownPrev = fs3Down;
+
+    // FS3 is dual-function: tap on RELEASE, hold (FS_TUNER_HOLD) -> tuner. The
+    // combo window only gates combo eligibility; after it lapses FS3 waits for
+    // the hold or the release.
+    if (fsDown[3]) {
+      if (fsPending[3] && fsNow - fsStart[3] >= FS_COMBO_WINDOW) fsPending[3] = false;
+      if (!fs3HoldFired && !fsConsumed[3] && fsNow - fsStart[3] >= FS_TUNER_HOLD) {
+        g_events.push({UiEvent::FsHold, 3}); // hold -> tuner
+        fs3HoldFired = true;
+      }
+    } else if (fsDownPrev[3]) {
+      if (!fs3HoldFired && !fsConsumed[3])
+        g_events.push({UiEvent::Footswitch, 3}); // tap on release
+      fsPending[3] = false;
+      fsConsumed[3] = false;
+    }
+
+    for (int i = 0; i < 4; i++)
+      fsDownPrev[i] = fsDown[i];
 
     bool navDown = navSw.is_pressed();
     if (!navDown) {
@@ -472,7 +517,7 @@ int main(int argc, char **argv) {
     return 1;
   }
   lvgl_display::init(lcd);
-  UiController ui(g_chain, g_ctl, g_fx, tuner, ampName, rigDir);
+  UiController ui(g_chain, g_ctl, g_fx, tuner, ampName, base.string());
   ui.begin();
 
   // --- NeoPixels (optional) ---

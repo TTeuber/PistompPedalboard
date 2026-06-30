@@ -22,6 +22,7 @@ struct UiEvent {
     Enc3Turn,     // tweak knob 3; value = +1 / -1 (master, or param on a control page)
     Footswitch,   // FS pressed edge; value = footswitch index 0..3   (phase 3)
     FsHold,       // FS long-press;  value = footswitch index 0..3   (phase 3)
+    RigStep,      // two-switch combo; value = -1 (prev rig) / +1 (next rig)
   };
   uint8_t kind = NavRotate;
   int8_t  value = 0;
