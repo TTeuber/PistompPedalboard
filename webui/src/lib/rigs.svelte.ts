@@ -7,7 +7,8 @@
 // a rig from the top bar and the sidebar highlight moves with it.
 
 import { api } from './api.js';
-import { applyState } from './store.svelte.js';
+import { applyState, board } from './store.svelte.js';
+import { clearActivePresets } from './presets.svelte.js';
 import type { BoardState, RigRef, Setlist } from './types.js';
 
 export const ALL = '__all__'; // pseudo-setlist: the whole rig catalogue
@@ -18,7 +19,35 @@ export const rigState = $state({
   selSetlist: ALL,
   viewRigs: [] as RigRef[], // rigs shown for the current selection
   activeRig: '', // last rig we loaded (for highlight + stepping)
+  baseSig: '', // board signature as of the last load/save (for the dirty flag)
 });
+
+// A canonical snapshot of exactly what a rig persists (master/bypass + each
+// effect's enabled/footswitch/params + grid order). We diff the live board
+// against this to know if the loaded rig has unsaved edits.
+function rigSignature(): string {
+  return JSON.stringify({
+    master: board.master,
+    bypassed: board.bypassed,
+    fx: board.effects.map((e) => ({
+      t: e.type,
+      en: e.enabled,
+      sl: e.slot,
+      fa: e.fsAssign,
+      fm: e.fsMode,
+      p: e.params.map((p) => [p.id, p.value]),
+    })),
+  });
+}
+// Mark the live board as matching the loaded rig (called on load and save).
+export function markRigClean(): void {
+  rigState.baseSig = rigSignature();
+}
+// True when a rig is loaded and the board has diverged from its saved state.
+// Reactive: reads the board $state, so it recomputes as knobs/effects change.
+export function rigDirty(): boolean {
+  return !!rigState.activeRig && rigSignature() !== rigState.baseSig;
+}
 
 // (Re)load the catalogue + setlist names, preserving the current selection.
 export async function loadLists(): Promise<void> {
@@ -54,17 +83,21 @@ export async function pickRig(name: string): Promise<void> {
   if (!name) return;
   rigState.activeRig = name;
   applyState(await api<BoardState>('/api/rig/load', { name }));
+  clearActivePresets(); // the rig (re)defines the board; preset memory is stale
+  markRigClean(); // the board now matches the rig we just loaded
 }
 
-// Move to the prev/next loadable rig in the current view; from nothing, jump to
-// an end. Missing rigs (deleted from the library) are skipped over.
+// Move to the prev/next loadable rig in the current view, wrapping around the
+// ends. From nothing, jump to an end. Missing rigs (deleted from the library)
+// are skipped over; if every rig is missing we stay put.
 export function step(dir: number): void {
   const rigs = rigState.viewRigs;
-  if (!rigs.length) return;
+  const n = rigs.length;
+  if (!n) return;
   const cur = rigs.findIndex((r) => r.name === rigState.activeRig);
-  let next = cur < 0 ? (dir > 0 ? 0 : rigs.length - 1) : cur + dir;
-  while (next >= 0 && next < rigs.length && rigs[next].missing) next += dir;
-  if (next < 0 || next >= rigs.length) return;
+  let next = cur < 0 ? (dir > 0 ? 0 : n - 1) : (cur + dir + n) % n;
+  for (let i = 0; i < n && rigs[next].missing; i++) next = (next + dir + n) % n;
+  if (rigs[next].missing) return; // every rig in the view is missing
   pickRig(rigs[next].name);
 }
 
@@ -75,5 +108,24 @@ export async function saveRig(name: string): Promise<void> {
   if (!n) return;
   await api('/api/rig/save', { name: n });
   rigState.activeRig = n;
+  markRigClean(); // saved -> the board is the clean baseline again
+  await loadLists();
+}
+
+// Rename the loaded rig (preserves its id, so setlists keep resolving).
+export async function renameRig(from: string, to: string): Promise<void> {
+  const t = to.trim();
+  if (!t || t === from) return;
+  await api('/api/rig/rename', { from, to: t });
+  rigState.activeRig = t;
+  await loadLists();
+}
+
+// Delete a rig from the library. The live board keeps playing; it just stops
+// being a named rig (the asterisk/title clear).
+export async function deleteRig(name: string): Promise<void> {
+  if (!name) return;
+  await api('/api/rig/delete', { name });
+  if (rigState.activeRig === name) rigState.activeRig = '';
   await loadLists();
 }

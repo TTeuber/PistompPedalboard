@@ -35,6 +35,14 @@ bool load(const std::string& dir, const std::string& name, Chain& chain,
 bool save(const std::string& dir, const std::string& name, Chain& chain,
           PedalControls& ctl, std::string* idOut = nullptr);
 
+// Delete dir/<name>.json. false if it didn't exist / couldn't remove.
+bool remove(const std::string& dir, const std::string& name);
+
+// Rename dir/<from>.json to dir/<to>.json, preserving the file's stable id so
+// setlists that reference this rig still resolve. false if `from` is missing,
+// `to` already exists, or the write fails.
+bool rename(const std::string& dir, const std::string& from, const std::string& to);
+
 // Values-only document:
 //   { name, master, bypassed,
 //     fxGrid:[ null | {kind,id}, ... ],          // per-slot grid layout

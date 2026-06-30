@@ -31,6 +31,10 @@
   let pending = $state<null | (() => void | Promise<void>)>(null);
   // Whether the delete-confirmation prompt is open.
   let confirmingDelete = $state(false);
+  // Save fork: overwrite the open setlist vs save a copy under a new name.
+  let saveChoice = $state(false);
+  let askingNew = $state(false);
+  let newDraft = $state('');
 
   const sameList = (a: RigRef[], b: RigRef[]) =>
     a.length === b.length && a.every((x, i) => x.name === b[i].name && x.id === b[i].id);
@@ -144,6 +148,35 @@
     markClean();
     await loadLists();
   }
+  // Save forks once a setlist exists on disk: overwrite it (applying any rename)
+  // or save the working rigs as a brand-new setlist. A never-saved setlist just
+  // saves straight away under its title.
+  function clickSave() {
+    if (!name.trim()) return;
+    if (sel) saveChoice = true;
+    else save();
+  }
+  function overwriteSave() {
+    saveChoice = false;
+    save();
+  }
+  function openSaveAsNew() {
+    saveChoice = false;
+    newDraft = name.trim();
+    askingNew = true;
+  }
+  async function confirmSaveAsNew() {
+    const n = newDraft.trim();
+    if (!n) return;
+    askingNew = false;
+    await api('/api/setlist/save', { name: n, rigs }); // a copy; the original stays
+    sel = n;
+    name = n;
+    renaming = false;
+    markClean();
+    await loadLists();
+  }
+
   function requestDelete() {
     if (!sel) return;
     menuOpen = false;
@@ -320,7 +353,7 @@
               <path d="M12 5v14M5 12h14" />
             </svg>
           </button>
-          <button class="icon-btn" onclick={save} disabled={!name.trim()} title="Save" aria-label="Save">
+          <button class="icon-btn" onclick={clickSave} disabled={!name.trim()} title="Save" aria-label="Save">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
               <path d="M17 21v-8H7v8M7 3v5h8" />
@@ -400,6 +433,43 @@
           <button class="btn primary" onclick={promptSave} disabled={!name.trim()}>Save</button>
         </div>
         {#if !name.trim()}<p class="hint">Name the setlist first to save it.</p>{/if}
+      </div>
+    </div>
+  {/if}
+
+  {#if saveChoice}
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-label="Save setlist">
+      <div class="modal">
+        <h3>Save setlist</h3>
+        <p>Overwrite “{sel}”, or save these rigs as a new setlist?</p>
+        <div class="modal-actions">
+          <button class="btn" onclick={() => (saveChoice = false)}>Cancel</button>
+          <button class="btn" onclick={openSaveAsNew}>Save as new…</button>
+          <button class="btn primary" onclick={overwriteSave}>Save “{name.trim()}”</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if askingNew}
+    <div class="modal-overlay" role="dialog" aria-modal="true" aria-label="Name setlist">
+      <div class="modal">
+        <h3>Save as new setlist</h3>
+        <input
+          class="name-field"
+          type="text"
+          placeholder="setlist name…"
+          bind:value={newDraft}
+          use:autofocus
+          onkeydown={(e) => {
+            if (e.key === 'Enter') confirmSaveAsNew();
+            else if (e.key === 'Escape') askingNew = false;
+          }}
+        />
+        <div class="modal-actions">
+          <button class="btn" onclick={() => (askingNew = false)}>Cancel</button>
+          <button class="btn primary" onclick={confirmSaveAsNew} disabled={!newDraft.trim()}>Save</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -580,6 +650,17 @@
     box-shadow: 0 16px 48px rgba(0, 0, 0, .5);
   }
   .modal h3 { margin: 0 0 var(--sp-3); font-size: var(--fs-lg); font-weight: 600; }
+  .name-field {
+    width: 100%;
+    margin-top: var(--sp-4);
+    background: var(--inset);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: var(--sp-3) var(--sp-4);
+    font: inherit;
+  }
+  .name-field:focus { outline: none; border-color: var(--accent); }
   .modal p { margin: 0; color: var(--muted); font-size: var(--fs-sm); line-height: 1.5; }
   .modal-actions {
     display: flex;

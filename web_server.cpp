@@ -379,6 +379,36 @@ void WebServer::setupRoutes() {
     ok(res);
   });
 
+  // {name}
+  svr_->Post("/api/rig/delete", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    std::string name = b.value("name", std::string{});
+    if (name.empty()) { res.status = 400; return; }
+    rigs::remove(rigDir_, name);
+    manifest::removeFile(baseDir_,
+                         (std::filesystem::path(rigDir_) / (name + ".json")).string());
+    ok(res);
+  });
+
+  // {from, to}
+  svr_->Post("/api/rig/rename", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    std::string from = b.value("from", std::string{});
+    std::string to = b.value("to", std::string{});
+    if (from.empty() || to.empty() || !rigs::rename(rigDir_, from, to)) {
+      res.status = 400;
+      res.set_content("{\"error\":\"rename failed\"}", "application/json");
+      return;
+    }
+    // The renamed file keeps its id, so upserting the new path updates the
+    // manifest entry in place (matched by id) -- setlist refs keep resolving.
+    manifest::upsertFile(baseDir_, "rig",
+                         (std::filesystem::path(rigDir_) / (to + ".json")).string());
+    ok(res);
+  });
+
   // ---- Per-pedal presets: knob snapshots scoped by effect kind -------------
   // The browser passes the effect's instance id (type_id); we derive the kind
   // so a preset saved on "drive" applies to "drive-2" too. Load/save/delete
@@ -443,6 +473,26 @@ void WebServer::setupRoutes() {
     manifest::removeFile(
         baseDir_,
         (std::filesystem::path(presetDir_) / kind / (name + ".json")).string());
+    ok(res);
+  });
+
+  // {effect, from, to}
+  svr_->Post("/api/pedal-preset/rename", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    std::string from = b.value("from", std::string{});
+    std::string to = b.value("to", std::string{});
+    std::string kind = fx ? fxBaseKind(fx->type_id()) : std::string{};
+    if (!fx || from.empty() || to.empty() ||
+        !presets::rename(presetDir_, kind, from, to)) {
+      res.status = 400;
+      res.set_content("{\"error\":\"rename failed\"}", "application/json");
+      return;
+    }
+    manifest::upsertFile(
+        baseDir_, "preset",
+        (std::filesystem::path(presetDir_) / kind / (to + ".json")).string());
     ok(res);
   });
 

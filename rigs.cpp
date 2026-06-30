@@ -152,4 +152,30 @@ bool save(const std::string& dir, const std::string& name, Chain& chain,
   return true;
 }
 
+bool remove(const std::string& dir, const std::string& name) {
+  std::error_code ec;
+  return fs::remove(fs::path(dir) / (name + ".json"), ec);
+}
+
+bool rename(const std::string& dir, const std::string& from,
+            const std::string& to) {
+  if (from.empty() || to.empty()) return false;
+  if (from == to) return true;
+  fs::path src = fs::path(dir) / (from + ".json");
+  fs::path dst = fs::path(dir) / (to + ".json");
+  std::error_code ec;
+  if (!fs::exists(src, ec)) return false;
+  if (fs::exists(dst, ec)) return false;  // don't clobber a different rig
+
+  // Re-write under the new name but keep the existing id/createdAt/provenance,
+  // so setlists keyed on this rig's id still link to it after the rename.
+  json doc;
+  { std::ifstream in(src); if (!in) return false;
+    try { in >> doc; } catch (...) { return false; } }
+  doc["name"] = to;
+  { std::ofstream out(dst); if (!out) return false; out << doc.dump(2); }
+  fs::remove(src, ec);
+  return true;
+}
+
 }  // namespace rigs

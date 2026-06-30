@@ -37,4 +37,9 @@ bool save(const std::string& dir, const std::string& kind,
 bool remove(const std::string& dir, const std::string& kind,
             const std::string& name);
 
+// Rename <dir>/<kind>/<from>.json to <to>.json, preserving the file's id. false
+// if `from` is missing, `to` already exists, or the write fails.
+bool rename(const std::string& dir, const std::string& kind,
+            const std::string& from, const std::string& to);
+
 }  // namespace presets

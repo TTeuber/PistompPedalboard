@@ -86,4 +86,25 @@ bool remove(const std::string& dir, const std::string& kind,
   return fs::remove(fs::path(dir) / kind / (name + ".json"), ec);
 }
 
+bool rename(const std::string& dir, const std::string& kind,
+            const std::string& from, const std::string& to) {
+  if (from.empty() || to.empty()) return false;
+  if (from == to) return true;
+  fs::path d = fs::path(dir) / kind;
+  fs::path src = d / (from + ".json");
+  fs::path dst = d / (to + ".json");
+  std::error_code ec;
+  if (!fs::exists(src, ec)) return false;
+  if (fs::exists(dst, ec)) return false;  // don't clobber a different preset
+
+  // Re-write under the new name, keeping id/createdAt/provenance from the file.
+  json doc;
+  { std::ifstream in(src); if (!in) return false;
+    try { in >> doc; } catch (...) { return false; } }
+  doc["name"] = to;
+  { std::ofstream out(dst); if (!out) return false; out << doc.dump(2); }
+  fs::remove(src, ec);
+  return true;
+}
+
 }  // namespace presets
