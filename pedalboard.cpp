@@ -31,6 +31,7 @@
 #include "effects/flanger.h"
 #include "effects/fuzz.h"
 #include "effects/gate.h"
+#include "effects/gold_drive.h"
 #include "effects/hall_reverb.h"
 #include "effects/input_gain.h"
 #include "effects/octave.h"
@@ -39,6 +40,7 @@
 #include "effects/phaser.h"
 #include "effects/plate_reverb.h"
 #include "effects/shimmer_reverb.h"
+#include "effects/sustainer.h"
 #include "effects/swell.h"
 #include "effects/tremolo.h"
 #include "effects/tuner.h"
@@ -482,8 +484,10 @@ int main(int argc, char **argv) {
   // kind with the factory (the picker mints fresh instances on demand). Order
   // here is the order they appear in the "Add FX" picker.
   g_fx.add("overdrive",  "Overdrive",  [] { return std::make_unique<fx::Overdrive>(); });
+  g_fx.add("golddrive",  "Gold Drive", [] { return std::make_unique<fx::GoldDrive>(); });
   g_fx.add("distortion", "Distortion", [] { return std::make_unique<fx::Distortion>(); });
   g_fx.add("fuzz",       "Fuzz",       [] { return std::make_unique<fx::Fuzz>(); });
+  g_fx.add("sustainer",  "Sustainer",  [] { return std::make_unique<fx::Sustainer>(); });
   g_fx.add("chorus",     "Chorus",     [] { return std::make_unique<fx::Chorus>(); });
   g_fx.add("vibrato",    "Vibrato",    [] { return std::make_unique<fx::Vibrato>(); });
   g_fx.add("tremolo",    "Tremolo",    [] { return std::make_unique<fx::Tremolo>(); });

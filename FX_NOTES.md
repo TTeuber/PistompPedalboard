@@ -31,6 +31,31 @@ custom, better-sounding effects. Tackled incrementally.
       pitch-shifter in the feedback path for the ever-rising ambient wash.
   Old `juce::Reverb` (Freeverb) removed; `hall` is the new default-chain reverb.
 
+- **Drive collection** (was suggestion 3): the three placeholder drives became
+  a five-pedal collection with real per-circuit topology, sharing
+  `effects/drive_dsp.h` (`OversamplerIIR`, `DcBlock`, `EnvFollower`,
+  `HighPass1`, `ScoopTone`, clip primitives); `drive_base.h` deleted:
+    - **Overdrive** — TS-style: 720 Hz HP *into* a feedback-clipper identity
+      (`u + tanh(g·hp(u))` → mid-hump, tight lows), 6 kHz post rolloff,
+      parallel clean Blend knob.
+    - **Gold Drive** (new, `gold_drive.h`) — Klon-style dual path: clean boost
+      crossfades into a 350 Hz-HP'd hard clipper (mix = drive², so the low
+      third of the knob stays a transparent boost), ±8 dB treble shelf.
+    - **Distortion** — RAT-style: +12..+60 dB into asymmetric hard clip
+      (+1.0/−0.85) with a post DC blocker (the old unblocked-DC bug is dead),
+      swept "Filter" lowpass.
+    - **Fuzz** — Fuzz Face-style: envelope follower (3/120 ms) drives a bias
+      shift into `biasClip` — gated sputter when hit hard, cleans up as the
+      input drops; Bias knob scales it; no input HP on purpose.
+    - **Sustainer** (new, `sustainer.h`) — Big Muff-style: two cascaded tanh
+      stages with 80 Hz/8 kHz inter-stage filters, ScoopTone tilt tone
+      (classic mid scoop at noon), Sustain knob.
+    - **All**: per-pedal output makeup `C·g^-α` flattens the Drive sweep (was
+      ~30 dB of swing); every clipper is followed by a DC blocker; the old
+      `Oversampler2x` (single 12 dB/oct biquad — decorative) is replaced by
+      `drv::OversamplerIIR`, 8th-order Butterworth up/down cascades — 2x on
+      the overdrives, 4x on distortion/fuzz/sustainer.
+
 ## Suggestions (to tackle individually)
 
 ### 1. Octave — fix the tracking (known broken)
@@ -60,38 +85,19 @@ custom, better-sounding effects. Tackled incrementally.
 - Then add **shimmer** (pitch-shifted feedback path) — the signature worship
   pad sound.
 
-### 3. Drive family — real voicing, not just a curve
-
-All three pedals share `drive_base.h` and differ only in the waveshape; real
-pedals differ mostly in filter topology:
-
-- **Overdrive (TS-style):** highpass ~700 Hz *into* the clipper (mid-hump,
-  tight low end), post tone stack, maybe a parallel clean blend.
-- **Distortion (RAT/DS-1):** harder clip, tighter input HP, steeper post LP.
-  **Bug:** `tanh(v + 0.15v²)` is asymmetric and generates DC — nothing after
-  the shaper blocks it. Any asymmetric shaper needs a post DC blocker.
-- **Fuzz:** envelope-dependent bias shift into an asymmetric clipper for the
-  gated sputter / cleans-up-with-guitar-volume behavior; `tanh(3v)` is just
-  louder overdrive.
-- **All:** output loudness compensation across the Drive sweep (currently max
-  drive is ~30 dB louder than min).
-- **Oversampler:** `Oversampler2x`'s anti-alias is a single 12 dB/oct biquad —
-  nearly decorative. Use a half-band FIR or 2–3 cascaded biquads; consider 4x
-  for the fuzz.
-
-### 4. Delay — analog character
+### 3. Delay — analog character
 
 - Subtle modulation on the repeats (slow LFO wow on the read tap).
 - Gentle saturation in the feedback loop (tape/BBD vibe).
 - Highpass in the feedback loop so repeats shed lows instead of piling up.
 
-### 5. Compressor — hand-roll it
+### 4. Compressor — hand-roll it
 
 `juce::dsp::Compressor` is hard-knee feedforward with *unlinked* channels.
 A custom one with soft knee, stereo-linked detector, and program-dependent
 (optical-style) release turns it from utility into always-on.
 
-### 6. Smaller polish
+### 5. Smaller polish
 
 - **Tremolo:** harmonic tremolo mode (split ~800 Hz, modulate lows/highs in
   antiphase — brownface sound); stereo-phase (pan trem) knob; the square-edge
@@ -101,7 +107,7 @@ A custom one with soft knee, stereo-linked detector, and program-dependent
 - **Phaser:** expose stage count / centre frequency instead of fixed 600 Hz.
 - **Chorus:** multi-voice (2–3 per side) if the JUCE one ever feels thin.
 
-### 7. New effect candidates
+### 6. New effect candidates
 
 - Shimmer reverb (or a mode of the new reverb) — #1 for the genre
 - Cab IR loader (fixed-partition convolution) — matters if any NAM captures

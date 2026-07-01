@@ -1,8 +1,9 @@
 // dsp_util.h -- tiny real-time DSP helpers for the hand-written effects.
 //
-// Just enough for the Drive waveshaper: an RBJ biquad (used as the anti-alias
-// lowpass in the 2x oversampler) and a one-pole lowpass (tone control). Both are
-// streaming, allocation-free, and safe to call on the audio thread.
+// The shared primitives: an RBJ biquad, a one-pole parameter smoother, and a
+// one-pole lowpass. All streaming, allocation-free, and safe to call on the
+// audio thread. (Drive-specific blocks live in effects/drive_dsp.h, reverb
+// blocks in effects/reverb_dsp.h.)
 
 #pragma once
 
@@ -113,33 +114,5 @@ struct OnePole {
   float process(float x) noexcept {
     z = (1.0f - a) * x + a * z;
     return z;
-  }
-};
-
-// 2x oversampler around a sample-wise nonlinearity, to keep waveshaping
-// harmonics from aliasing back down. Holds the up/down anti-alias filters for
-// ONE channel; instantiate one per channel. `shape` is a sample->sample functor.
-struct Oversampler2x {
-  Biquad up, down;
-
-  // Cutoff a touch below the base-rate Nyquist, at the 2x rate.
-  void prepare(double baseFs) noexcept {
-    double os = baseFs * 2.0;
-    up.setLowpass(baseFs * 0.45, os);
-    down.setLowpass(baseFs * 0.45, os);
-    up.reset();
-    down.reset();
-  }
-
-  template <typename Shaper>
-  float process(float x, Shaper shape) noexcept {
-    // Zero-stuff upsample (x, 0) with *2 gain compensation, shape, anti-alias,
-    // then decimate by keeping the first subsample of each pair.
-    float u0 = up.process(2.0f * x);
-    float u1 = up.process(0.0f);
-    float d0 = down.process(shape(u0));
-    float d1 = down.process(shape(u1));
-    (void)d1;  // advance the decimation filter's state, but drop this subsample
-    return d0;
   }
 };
