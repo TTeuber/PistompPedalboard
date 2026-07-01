@@ -12,10 +12,10 @@
 #pragma once
 
 #include "../effect.h"
+#include "../dsp_util.h"
 
 #include "NAM/dsp.h"
 
-#include <cmath>
 #include <vector>
 
 namespace fx {
@@ -35,23 +35,34 @@ public:
     in_.assign((size_t)maxBlock, 0.0);
     out_.assign((size_t)maxBlock, 0.0);
     if (model_) model_->ResetAndPrewarm(sr, maxBlock);
+    gS_.prepare(sr, 20.0);
+    lvlS_.prepare(sr, 20.0);
+    gS_.snap(drive_->get() / 100.0f);
+    lvlS_.snap(level_->get() / 100.0f);
   }
 
   void process(float* L, float* R, int n) noexcept override {
-    const float g = drive_->get() / 100.0f;
-    const float lvl = level_->get() / 100.0f;
+    // Input/Output trims smoothed per sample so swept knobs glide (the input
+    // trim especially -- a gain step into the model is a click, amplified).
+    const float gT = drive_->get() / 100.0f;
+    const float lvlT = level_->get() / 100.0f;
 
     if (!model_) {  // no model: unity, just apply trims and fan to stereo
-      for (int i = 0; i < n; i++) { float y = L[i] * g * lvl; L[i] = y; R[i] = y; }
+      for (int i = 0; i < n; i++) {
+        float y = L[i] * gS_.next(gT) * lvlS_.next(lvlT);
+        L[i] = y;
+        R[i] = y;
+      }
       return;
     }
 
-    for (int i = 0; i < n; i++) in_[(size_t)i] = (double)L[i] * g;
+    for (int i = 0; i < n; i++)
+      in_[(size_t)i] = (double)(L[i] * gS_.next(gT));
     double* ia[1] = {in_.data()};
     double* oa[1] = {out_.data()};
     model_->process(ia, oa, n);
     for (int i = 0; i < n; i++) {
-      float y = (float)out_[(size_t)i] * lvl;
+      float y = (float)out_[(size_t)i] * lvlS_.next(lvlT);
       L[i] = y;
       R[i] = y;
     }
@@ -60,6 +71,7 @@ public:
 private:
   nam::DSP* model_;            // borrowed, prewarmed; never mutated on RT thread
   std::vector<double> in_, out_;
+  Smoother gS_, lvlS_;
   Param *drive_, *level_;
 };
 

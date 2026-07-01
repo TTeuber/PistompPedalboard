@@ -44,12 +44,18 @@ public:
     dcPrev_ = dcOut_ = 0.0f;
     flip_ = 1.0f;
     armed_ = false;
+    subS_.prepare(sr, 20.0);
+    upS_.prepare(sr, 20.0);
+    dryS_.prepare(sr, 20.0);
+    subS_.snap(sub_->get() / 100.0f);
+    upS_.snap(up_->get() / 100.0f);
+    dryS_.snap(dry_->get() / 100.0f);
   }
 
   void process(float* L, float* R, int n) noexcept override {
-    const float sub = sub_->get() / 100.0f;
-    const float up = up_->get() / 100.0f;
-    const float dry = dry_->get() / 100.0f;
+    const float subT = sub_->get() / 100.0f;
+    const float upT = up_->get() / 100.0f;
+    const float dryT = dry_->get() / 100.0f;
     // Tone rolls the synthetic voices ~800 Hz (dark) .. ~6 kHz (open).
     const double fc = 800.0 * std::pow(6000.0 / 800.0, tone_->get() / 100.0);
     subLp_.setCutoff(std::min(fc, sr_ * 0.45), sr_);
@@ -57,6 +63,10 @@ public:
     envLp_.setCutoff(20.0, sr_);  // slow amplitude follower
 
     for (int i = 0; i < n; i++) {
+      // Voice mixes smoothed per sample so swept knobs glide instead of step.
+      const float sub = subS_.next(subT);
+      const float up = upS_.next(upT);
+      const float dry = dryS_.next(dryT);
       float m = 0.5f * (L[i] + R[i]);            // collapse to mono for tracking
       float env = envLp_.process(std::fabs(m));  // loudness of the synth voices
 
@@ -91,6 +101,7 @@ private:
   float dcPrev_ = 0.0f, dcOut_ = 0.0f;  // octave-up DC blocker state
   float flip_ = 1.0f;                   // octave-down divider sign
   bool armed_ = false;                  // Schmitt-trigger arm state
+  Smoother subS_, upS_, dryS_;
   Param *sub_, *up_, *dry_, *tone_;
 };
 

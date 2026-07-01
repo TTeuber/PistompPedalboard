@@ -10,8 +10,8 @@
 #pragma once
 
 #include "../effect.h"
+#include "../dsp_util.h"
 
-#include <algorithm>
 #include <cmath>
 
 namespace fx {
@@ -23,24 +23,22 @@ public:
   }
 
   void prepare(double sr, int) override {
-    sr_ = sr;
-    cur_ = std::pow(10.0f, gain_->get() / 20.0f);  // seed at target -> no startup ramp
+    gainS_.prepare(sr, 20.0);
+    gainS_.snap(std::pow(10.0f, gain_->get() / 20.0f));  // seed at target -> no startup ramp
   }
 
   void process(float* L, float* R, int n) noexcept override {
     const float target = std::pow(10.0f, gain_->get() / 20.0f);
-    const float a = std::exp(-1.0f / (float(sr_) * 0.001f * 20.0f));  // ~20 ms
     for (int i = 0; i < n; i++) {
-      cur_ = a * cur_ + (1.0f - a) * target;
-      L[i] *= cur_;
-      R[i] *= cur_;
+      const float g = gainS_.next(target);
+      L[i] *= g;
+      R[i] *= g;
     }
   }
 
 private:
   Param* gain_;
-  double sr_ = 48000.0;
-  float cur_ = 1.0f;  // smoothed linear gain, carried across blocks
+  Smoother gainS_;  // smoothed linear gain, carried across blocks
 };
 
 }  // namespace fx

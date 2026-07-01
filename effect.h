@@ -76,7 +76,63 @@ public:
   // L and R are separate channel buffers (deinterleaved).
   virtual void process(float* L, float* R, int n) noexcept = 0;
 
-  // true = engaged. The chain skips disabled effects. Lock-free toggle.
+  // Effects whose output rings on after the input stops (delay echoes, reverb
+  // wash) return true so bypass keeps them processing and lets the tail decay
+  // naturally instead of amputating it.
+  virtual bool hasTails() const noexcept { return false; }
+
+  // What the chain calls instead of process(): process() plus click-free
+  // bypass. Toggling `enabled` never hard-switches the signal -- a linear
+  // crossfade (`step` per sample, ~10 ms end to end) moves between dry and wet.
+  // Tails effects fade their INPUT instead, staying live while bypassed so
+  // echoes/washes ring out (the dry passes through untouched alongside).
+  // dryL/dryR are chain-owned scratch buffers (>= n). REAL-TIME safe.
+  void run(float* L, float* R, int n, float* dryL, float* dryR,
+           float step) noexcept {
+    const bool on = enabled.load(std::memory_order_relaxed);
+    const float target = on ? 1.0f : 0.0f;
+    if (on ? fade_ >= 1.0f : fade_ <= 0.0f) {  // ramp already settled
+      if (on) { process(L, R, n); return; }    // fully engaged
+      if (!hasTails()) return;                 // fully bypassed
+    }
+    for (int i = 0; i < n; i++) { dryL[i] = L[i]; dryR[i] = R[i]; }
+    const float f0 = fade_;
+    float f = f0;
+    if (hasTails()) {
+      // Fade the input feeding the effect; its wet tail stays at full level.
+      for (int i = 0; i < n; i++) {
+        f = stepToward(f, target, step);
+        L[i] *= f;
+        R[i] *= f;
+      }
+      process(L, R, n);
+      // Re-walk the identical ramp to blend the dry path back in on top.
+      f = f0;
+      for (int i = 0; i < n; i++) {
+        f = stepToward(f, target, step);
+        L[i] += dryL[i] * (1.0f - f);
+        R[i] += dryR[i] * (1.0f - f);
+      }
+    } else {
+      process(L, R, n);
+      for (int i = 0; i < n; i++) {
+        f = stepToward(f, target, step);
+        L[i] = dryL[i] + (L[i] - dryL[i]) * f;
+        R[i] = dryR[i] + (R[i] - dryR[i]) * f;
+      }
+    }
+    fade_ = f;
+  }
+
+  // Jump the bypass fade to match `enabled` with no ramp. The chain calls this
+  // at prepare time so a pedal that starts disabled (e.g. the tuner) doesn't
+  // spend its first 10 ms audibly fading out.
+  void snapFade() noexcept {
+    fade_ = enabled.load(std::memory_order_relaxed) ? 1.0f : 0.0f;
+  }
+
+  // true = engaged. The chain crossfades disabled effects out (see run()).
+  // Lock-free toggle.
   std::atomic<bool> enabled{true};
 
   // Footswitch assignment (phase 3). fsAssign = which footswitch (0..3) toggles
@@ -105,6 +161,14 @@ protected:
   }
 
 private:
+  // Move v toward target by at most `step`, without overshooting.
+  static float stepToward(float v, float target, float step) noexcept {
+    if (v < target) return std::min(v + step, target);
+    if (v > target) return std::max(v - step, target);
+    return v;
+  }
+
   std::string type_id_;
   std::string name_;
+  float fade_ = 1.0f;  // bypass crossfade position: 1 = wet, 0 = dry (audio thread only)
 };

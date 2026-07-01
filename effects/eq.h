@@ -29,10 +29,19 @@ public:
     lowL_.reset();  lowR_.reset();
     midL_.reset();  midR_.reset();
     highL_.reset(); highR_.reset();
+    lgS_ = low_->get(); mgS_ = mid_->get(); hgS_ = high_->get();
   }
 
   void process(float* L, float* R, int n) noexcept override {
-    const double lg = low_->get(), mg = mid_->get(), hg = high_->get();
+    // Smooth the dB gains at BLOCK rate (~50 ms time constant): recomputing
+    // biquad coefficients per sample is needless work, but easing the per-block
+    // coefficient jumps down to fractions of a dB kills the zipper of a swept
+    // knob just as well.
+    const double a = std::exp(-(double)n / (0.050 * sr_));
+    lgS_ = low_->get()  + a * (lgS_ - low_->get());
+    mgS_ = mid_->get()  + a * (mgS_ - mid_->get());
+    hgS_ = high_->get() + a * (hgS_ - high_->get());
+    const double lg = lgS_, mg = mgS_, hg = hgS_;
     lowL_.setLowShelf(kLowHz, sr_, lg);    lowR_.setLowShelf(kLowHz, sr_, lg);
     midL_.setPeak(kMidHz, sr_, mg);        midR_.setPeak(kMidHz, sr_, mg);
     highL_.setHighShelf(kHighHz, sr_, hg); highR_.setHighShelf(kHighHz, sr_, hg);
@@ -47,6 +56,7 @@ private:
   static constexpr double kLowHz = 120.0, kMidHz = 800.0, kHighHz = 3200.0;
   double sr_ = 48000.0;
   Biquad lowL_, lowR_, midL_, midR_, highL_, highR_;
+  double lgS_ = 0.0, mgS_ = 0.0, hgS_ = 0.0;  // block-smoothed band gains (dB)
   Param *low_, *mid_, *high_;
 };
 

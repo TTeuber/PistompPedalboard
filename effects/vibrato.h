@@ -14,6 +14,7 @@
 #pragma once
 
 #include "../effect.h"
+#include "../dsp_util.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -45,18 +46,19 @@ public:
     line_.setMaximumDelayInSamples((int)std::ceil(sr * 0.030) + 8);
     line_.reset();
     phase_ = 0.0f;
+    aSampS_.prepare(sr, 20.0);
+    aSampS_.snap(sweepTarget());
   }
 
   void process(float* L, float* R, int n) noexcept override {
     const float f = rate_->get();
-    const float cents = depth_->get();
-    // Sweep amplitude (samples) that yields `cents` of peak deviation at rate f.
-    const float r = std::pow(2.0f, cents / 1200.0f) - 1.0f;
-    float aSamp = (f > 0.01f) ? r / (2.0f * (float)M_PI * f) * (float)sr_ : 0.0f;
-    aSamp = std::min(aSamp, maxModSamps_);
+    const float aTarget = sweepTarget();
     const float inc = f / (float)sr_;
 
     for (int i = 0; i < n; i++) {
+      // Smoothed per sample: Depth/Rate scale the read tap, so a block-rate
+      // step there jumps the tap position -- an audible click.
+      const float aSamp = aSampS_.next(aTarget);
       float lfoL = std::sin(2.0f * (float)M_PI * phase_);
       float lfoR = std::sin(2.0f * (float)M_PI * (phase_ + 0.25f));
       float inL = L[i], inR = R[i];
@@ -73,11 +75,23 @@ public:
   }
 
 private:
+  // Sweep amplitude (samples) that yields Depth cents of peak deviation at the
+  // current Rate (see the header comment for the derivation), capped so the
+  // read tap stays inside the buffer.
+  float sweepTarget() const noexcept {
+    const float f = rate_->get();
+    const float r = std::pow(2.0f, depth_->get() / 1200.0f) - 1.0f;
+    const float a =
+        (f > 0.01f) ? r / (2.0f * (float)M_PI * f) * (float)sr_ : 0.0f;
+    return std::min(a, maxModSamps_);
+  }
+
   double sr_ = 48000.0;
   float centreSamps_ = 576.0f, maxModSamps_ = 480.0f;
   juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd>
       line_;
   float phase_ = 0.0f;
+  Smoother aSampS_;
   Param *rate_, *depth_;
 };
 

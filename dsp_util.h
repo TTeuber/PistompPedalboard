@@ -84,6 +84,23 @@ struct Biquad {
   }
 };
 
+// One-pole parameter smoother: read the target once per block, call next()
+// once per sample. `ms` is the time constant (63% of a step; ~5x to settle).
+// Kills the zipper noise of block-rate jumps in gains/mixes/depths. snap() in
+// prepare() so the first block doesn't ramp up from zero.
+struct Smoother {
+  float a = 0.0f, y = 0.0f;
+
+  void prepare(double fs, double ms) noexcept {
+    a = float(std::exp(-1.0 / (0.001 * ms * fs)));
+  }
+  void snap(float v) noexcept { y = v; }
+  float next(float target) noexcept {
+    y = target + a * (y - target);
+    return y;
+  }
+};
+
 // One-pole lowpass, used as a simple post-distortion tone control.
 struct OnePole {
   float a = 0.0f, z = 0.0f;

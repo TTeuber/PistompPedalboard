@@ -15,6 +15,7 @@
 #pragma once
 
 #include "../effect.h"
+#include "../dsp_util.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -39,6 +40,8 @@ public:
     spec.numChannels = 2;
     comp_.prepare(spec);
     comp_.reset();
+    makeupS_.prepare(sr, 20.0);
+    makeupS_.snap(std::pow(10.0f, makeup_->get() / 20.0f));
   }
 
   void process(float* L, float* R, int n) noexcept override {
@@ -46,7 +49,9 @@ public:
     comp_.setRatio(ratio_->get());
     comp_.setAttack(15.0f);                              // musical, fixed
     comp_.setRelease(150.0f);
-    const float makeup = std::pow(10.0f, makeup_->get() / 20.0f);
+    // Makeup is a bare post-gain, so it's the one knob here that zippers when
+    // swept; smooth it per sample. Threshold/ratio act through the envelope.
+    const float makeupT = std::pow(10.0f, makeup_->get() / 20.0f);
 
     // Block peak going in, so we can report how much the comp clamped (the
     // gain-reduction meter). Pre-makeup, so makeup gain doesn't mask it.
@@ -79,7 +84,11 @@ public:
     while (gr > curD &&
            !grDbDev_.compare_exchange_weak(curD, gr, std::memory_order_relaxed)) {}
 
-    for (int i = 0; i < n; i++) { L[i] *= makeup; R[i] *= makeup; }
+    for (int i = 0; i < n; i++) {
+      const float makeup = makeupS_.next(makeupT);
+      L[i] *= makeup;
+      R[i] *= makeup;
+    }
   }
 
   // Largest gain reduction (dB) since the last call; reading clears the peak hold
@@ -90,6 +99,7 @@ public:
 
 private:
   juce::dsp::Compressor<float> comp_;
+  Smoother makeupS_;
   Param *thresh_, *ratio_, *makeup_;
   std::atomic<float> grDb_{0.0f};
   std::atomic<float> grDbDev_{0.0f};

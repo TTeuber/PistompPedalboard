@@ -31,6 +31,8 @@ public:
     chorus_.reset();
   }
 
+  // No parameter smoothing needed here: juce::dsp::Chorus smooths its rate/
+  // depth/mix/feedback internally, so block-rate setters don't zipper.
   void process(float* L, float* R, int n) noexcept override {
     chorus_.setRate(rate_->get());
     chorus_.setDepth(depth_->get() / 100.0f);

@@ -36,21 +36,28 @@ public:
     osR_.prepare(sr);
     toneL_.reset();
     toneR_.reset();
+    gainS_.prepare(sr, 20.0);
+    levelS_.prepare(sr, 20.0);
+    gainS_.snap(driveGain());
+    levelS_.snap(level_->get() / 100.0f);
   }
 
   void process(float* L, float* R, int n) noexcept override {
-    const float gain = 1.0f + drive_->get() / 100.0f * 30.0f;  // 1x .. 31x
-    const float level = level_->get() / 100.0f;
+    const float gainT = driveGain();
+    const float levelT = level_->get() / 100.0f;
     // Tone: log-ish sweep ~700 Hz (dark) .. ~9 kHz (open).
     const double fc = 700.0 * std::pow(9000.0 / 700.0, tone_->get() / 100.0);
     toneL_.setCutoff(fc, sr_);
     toneR_.setCutoff(fc, sr_);
 
-    auto shaper = [gain](float x) noexcept -> float {
-      return Derived::shape(x * gain);  // inlined; the only per-pedal difference
-    };
-
     for (int i = 0; i < n; i++) {
+      // Smoothed per sample: a swept Drive/Level knob glides instead of
+      // stepping per block (a gain step into a waveshaper is a loud click).
+      const float g = gainS_.next(gainT);
+      const float level = levelS_.next(levelT);
+      auto shaper = [g](float x) noexcept -> float {
+        return Derived::shape(x * g);  // inlined; the only per-pedal difference
+      };
       float yl = osL_.process(L[i], shaper);
       float yr = osR_.process(R[i], shaper);
       L[i] = toneL_.process(yl) * level;
@@ -59,9 +66,14 @@ public:
   }
 
 private:
+  float driveGain() const noexcept {
+    return 1.0f + drive_->get() / 100.0f * 30.0f;  // 1x .. 31x
+  }
+
   double sr_ = 48000.0;
   Oversampler2x osL_, osR_;
   OnePole toneL_, toneR_;
+  Smoother gainS_, levelS_;
   Param *drive_, *tone_, *level_;
 };
 

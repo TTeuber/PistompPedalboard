@@ -74,20 +74,24 @@ public:
   // so runtime-created FX instances can be prepared off the audio thread.
   void prepare(double sampleRate, int maxBlock) {
     sr_ = sampleRate; maxBlock_ = maxBlock;
-    for (auto& fx : effects_) fx->prepare(sampleRate, maxBlock);
-    for (auto& s : fxSlots_) if (s) s->prepare(sampleRate, maxBlock);
+    fadeDryL_.assign((size_t)maxBlock, 0.0f);   // bypass-crossfade scratch
+    fadeDryR_.assign((size_t)maxBlock, 0.0f);
+    fadeStep_ = float(1.0 / (kFadeMs * 0.001 * sampleRate));
+    for (auto& fx : effects_) { fx->prepare(sampleRate, maxBlock); fx->snapFade(); }
+    for (auto& s : fxSlots_) if (s) { s->prepare(sampleRate, maxBlock); s->snapFade(); }
   }
 
   // REAL-TIME: run the in-place stereo signal through prefix, the published FX
-  // order, then suffix -- skipping disabled effects.
+  // order, then suffix. Effect::run() handles engaged/bypassed per effect --
+  // crossfading toggles so footswitches never click, and letting delay/reverb
+  // tails ring out while bypassed.
   void process(float* L, float* R, int n) noexcept {
-    for (auto* fx : prefix_)
-      if (fx->enabled.load(std::memory_order_relaxed)) fx->process(L, R, n);
+    float* dl = fadeDryL_.data();
+    float* dr = fadeDryR_.data();
+    for (auto* fx : prefix_) fx->run(L, R, n, dl, dr, fadeStep_);
     if (const FxOrder* o = fxOrder_.load(std::memory_order_acquire))
-      for (auto* fx : o->slots)
-        if (fx->enabled.load(std::memory_order_relaxed)) fx->process(L, R, n);
-    for (auto* fx : suffix_)
-      if (fx->enabled.load(std::memory_order_relaxed)) fx->process(L, R, n);
+      for (auto* fx : o->slots) fx->run(L, R, n, dl, dr, fadeStep_);
+    for (auto* fx : suffix_) fx->run(L, R, n, dl, dr, fadeStep_);
   }
 
   // Lookup by type_id (unique within the chain). Used by the web/preset layer.
@@ -147,6 +151,7 @@ public:
   void fxPlace(int slot, std::unique_ptr<Effect> fx) {
     if (slot < 0 || slot >= kFxSlots || !fx) return;
     fx->prepare(sr_, maxBlock_);
+    fx->snapFade();
     std::lock_guard<std::mutex> lk(editMutex_);
     auto old = std::move(fxSlots_[(size_t)slot]);   // may be null
     fxSlots_[(size_t)slot] = std::move(fx);
@@ -242,6 +247,13 @@ private:
   std::array<std::unique_ptr<Effect>, kFxSlots> fxSlots_{};  // owns FX instances
 
   double sr_ = 0; int maxBlock_ = 0;                    // format for runtime prepare()
+
+  // Bypass-crossfade support (see Effect::run). The scratch buffers hold each
+  // effect's dry input during a fade; safe to share across effects because the
+  // chain is strictly serial. Audio thread only.
+  static constexpr double kFadeMs = 10.0;               // toggle crossfade length
+  std::vector<float> fadeDryL_, fadeDryR_;
+  float fadeStep_ = 1.0f;                               // fade progress per sample
 
   std::atomic<const FxOrder*> fxOrder_{nullptr};        // published to audio thread
   std::unique_ptr<const FxOrder> fxLive_;               // currently published (owned)

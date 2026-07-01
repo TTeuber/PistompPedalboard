@@ -9,6 +9,7 @@
 #pragma once
 
 #include "../effect.h"
+#include "../dsp_util.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -39,18 +40,29 @@ public:
     line_.setMaximumDelayInSamples((int)std::ceil(sr * (kMaxMs / 1000.0)) + 8);
     line_.reset();
     phase_ = 0.0f;
+    sweepS_.prepare(sr, 20.0);
+    fbS_.prepare(sr, 20.0);
+    mixS_.prepare(sr, 20.0);
+    sweepS_.snap(depth_->get() / 100.0f * 0.005f * (float)sr);
+    fbS_.snap(fb_->get() / 100.0f);
+    mixS_.snap(mix_->get() / 100.0f);
   }
 
   void process(float* L, float* R, int n) noexcept override {
-    const float depth = depth_->get() / 100.0f;
-    const float fb = fb_->get() / 100.0f;
-    const float mix = mix_->get() / 100.0f;
+    const float fbT = fb_->get() / 100.0f;
+    const float mixT = mix_->get() / 100.0f;
     const float inc = rate_->get() / (float)sr_;
     // Sweep from ~0.5 ms out to ~0.5 + depth*5 ms.
     const float baseSamps = 0.0005f * (float)sr_;
-    const float sweepSamps = depth * 0.005f * (float)sr_;
+    const float sweepT = depth_->get() / 100.0f * 0.005f * (float)sr_;
 
     for (int i = 0; i < n; i++) {
+      // Depth/feedback/mix smoothed per sample: Depth scales the read tap, so a
+      // block-rate step there is an audible click in the swept comb.
+      const float sweepSamps = sweepS_.next(sweepT);
+      const float fb = fbS_.next(fbT);
+      const float mix = mixS_.next(mixT);
+
       // Raised-cosine LFO (0..1); R tapped a quarter cycle ahead for width.
       float lfoL = 0.5f * (1.0f - std::cos(2.0f * (float)M_PI * phase_));
       float lfoR =
@@ -78,6 +90,7 @@ private:
   juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd>
       line_;
   float phase_ = 0.0f;
+  Smoother sweepS_, fbS_, mixS_;
   Param *rate_, *depth_, *fb_, *mix_;
 };
 

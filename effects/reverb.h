@@ -23,8 +23,15 @@ public:
     freeze_ = addParam("freeze",  "Freeze",  "",  0, 1,   0);
   }
 
+  // Bypass lets the wash ring out (the chain keeps running us with the input
+  // faded to silence) instead of cutting it off mid-decay. Note: with Freeze
+  // held the wash sustains right through bypass -- by design.
+  bool hasTails() const noexcept override { return true; }
+
   void prepare(double sr, int) override { rev_.setSampleRate(sr); rev_.reset(); }
 
+  // No parameter smoothing needed here: juce::Reverb smooths damping, feedback
+  // and the wet/dry gains internally, so block-rate setParameters() is fine.
   void process(float* L, float* R, int n) noexcept override {
     juce::Reverb::Parameters p;
     const float mix = mix_->get() / 100.0f;

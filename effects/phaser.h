@@ -30,6 +30,8 @@ public:
     phaser_.reset();
   }
 
+  // No parameter smoothing needed here: juce::dsp::Phaser smooths its rate/
+  // depth/mix/feedback internally, so block-rate setters don't zipper.
   void process(float* L, float* R, int n) noexcept override {
     phaser_.setRate(rate_->get());
     phaser_.setDepth(depth_->get() / 100.0f);
