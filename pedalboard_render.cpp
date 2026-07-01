@@ -20,7 +20,7 @@
 #include "effects/eq.h"
 #include "effects/chorus.h"
 #include "effects/delay.h"
-#include "effects/reverb.h"
+#include "effects/hall_reverb.h"
 
 #include <chrono>
 #include <cmath>
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
   chain.fxPlaceInitial(0, std::make_unique<fx::Overdrive>());
   chain.fxPlaceInitial(1, std::make_unique<fx::Chorus>());
   chain.fxPlaceInitial(2, std::make_unique<fx::Delay>());
-  chain.fxPlaceInitial(3, std::make_unique<fx::Reverb>());
+  chain.fxPlaceInitial(3, std::make_unique<fx::Hall>());
   chain.finalize();  // partition prefix/suffix + publish FX order
   chain.prepare(sr, block);
 

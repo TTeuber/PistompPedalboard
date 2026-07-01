@@ -31,12 +31,14 @@
 #include "effects/flanger.h"
 #include "effects/fuzz.h"
 #include "effects/gate.h"
+#include "effects/hall_reverb.h"
 #include "effects/input_gain.h"
 #include "effects/octave.h"
 #include "effects/output_gain.h"
 #include "effects/overdrive.h"
 #include "effects/phaser.h"
-#include "effects/reverb.h"
+#include "effects/plate_reverb.h"
+#include "effects/shimmer_reverb.h"
 #include "effects/swell.h"
 #include "effects/tremolo.h"
 #include "effects/tuner.h"
@@ -490,12 +492,14 @@ int main(int argc, char **argv) {
   g_fx.add("octave",     "Octave",     [] { return std::make_unique<fx::Octave>(); });
   g_fx.add("swell",      "Auto-Swell", [] { return std::make_unique<fx::Swell>(); });
   g_fx.add("delay",      "Delay",      [] { return std::make_unique<fx::Delay>(); });
-  g_fx.add("reverb",     "Reverb",     [] { return std::make_unique<fx::Reverb>(); });
+  g_fx.add("hall",       "Hall",       [] { return std::make_unique<fx::Hall>(); });
+  g_fx.add("plate",      "Plate",      [] { return std::make_unique<fx::Plate>(); });
+  g_fx.add("shimmer",    "Shimmer",    [] { return std::make_unique<fx::Shimmer>(); });
 
   // Pre-fill the first grid slots with a curated default chain (NOT every kind,
   // which would overflow the 8-slot grid now that there are 11). The user can
   // add/remove/reorder from there.
-  const char* kDefaultChain[] = {"overdrive", "chorus", "delay", "reverb"};
+  const char* kDefaultChain[] = {"overdrive", "chorus", "delay", "hall"};
   for (int slot = 0; slot < (int)(sizeof(kDefaultChain) / sizeof(char*)); slot++)
     g_chain.fxPlaceInitial(slot, g_fx.create(kDefaultChain[slot]));
 

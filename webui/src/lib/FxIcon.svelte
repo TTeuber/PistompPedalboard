@@ -67,12 +67,23 @@
     <path d="M10 8v8" opacity="0.7" />
     <path d="M15 10v4" opacity="0.45" />
     <path d="M20 11.5v1" opacity="0.25" />
-  {:else if kind === 'reverb'}
+  {:else if kind === 'reverb' || kind === 'hall'}
     <!-- sound spreading outward in a room: nested arcs from a source. -->
     <path d="M4 20a14 14 0 0 1 14-14" />
     <path d="M4 20a9 9 0 0 1 9-9" opacity="0.6" />
     <path d="M4 20a4 4 0 0 1 4-4" opacity="0.35" />
     <circle cx="4" cy="20" r="1.4" fill={color} stroke="none" />
+  {:else if kind === 'plate'}
+    <!-- a vibrating metal plate: a tilted sheet with ripple lines. -->
+    <path d="M3 15l8-8h10l-8 8z" />
+    <path d="M7 13l6-6" opacity="0.5" />
+    <path d="M11 15l6-6" opacity="0.35" />
+  {:else if kind === 'shimmer'}
+    <!-- rising arcs with sparkles: the octave-up wash climbing. -->
+    <path d="M4 20a14 14 0 0 1 14-14" />
+    <path d="M4 20a9 9 0 0 1 9-9" opacity="0.55" />
+    <path d="M17 4l0.7 2 2 0.7-2 0.7-0.7 2-0.7-2-2-0.7 2-0.7z" fill={color} stroke="none" />
+    <path d="M10 3l0.5 1.4 1.4 0.5-1.4 0.5-0.5 1.4-0.5-1.4-1.4-0.5 1.4-0.5z" fill={color} stroke="none" opacity="0.6" />
   {:else}
     <!-- fallback: a simple pedal dot. -->
     <circle cx="12" cy="12" r="6" />

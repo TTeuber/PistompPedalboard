@@ -21,6 +21,16 @@ custom, better-sounding effects. Tackled incrementally.
   one-pole, ~100 ms, max 0.5 samples/sample) — the tape-machine pitch bend
   instead of a click.
 
+- **Reverb collection** (replaces Freeverb): three hand-rolled algorithmic
+  reverbs sharing `effects/reverb_dsp.h` (Schroeder/Dattorro `Allpass`, `Delay1`
+  multitap, `HighCut`, 8-line Householder `FDN8`, granular `PitchShift`):
+    - **Hall** (`hall_reverb.h`) — modulated FDN, Valhalla-style lush tail
+      (size/decay/pre-delay/damping/mod/rate/low-cut/width).
+    - **Plate** (`plate_reverb.h`) — Dattorro 1997 figure-8 tank, bright & dense.
+    - **Shimmer** (`shimmer_reverb.h`) — the FDN with an octave (+12/-12/dual)
+      pitch-shifter in the feedback path for the ever-rising ambient wash.
+  Old `juce::Reverb` (Freeverb) removed; `hall` is the new default-chain reverb.
+
 ## Suggestions (to tackle individually)
 
 ### 1. Octave — fix the tracking (known broken)
