@@ -9,6 +9,7 @@
 #pragma once
 
 #include "../effect.h"
+#include "../tempo.h"
 
 #include <cmath>
 
@@ -24,6 +25,10 @@ public:
     rate_  = addParam("rate",  "Rate",  "Hz", 0.1f, 12.0f, 5.0f);
     depth_ = addParam("depth", "Depth", "%",  0, 100, 50);
     shape_ = addParam("shape", "Shape", "",   0, 1,   0);  // 0 sine, 1 square
+    // Beat sync: when on, Rate is ignored and the LFO period tracks Div at the
+    // board tempo. Default Div = "1/8" (index 6 in tempo::kDivisions).
+    sync_  = addParam("sync",  "Sync",  "",   0, 1, 0);              // toggle
+    div_   = addParam("div",   "Div",   "",   0, tempo::kDivCount - 1, 6);  // enum
   }
 
   void prepare(double sr, int) override {
@@ -35,7 +40,13 @@ public:
   void process(float* L, float* R, int n) noexcept override {
     const float depth = depth_->get() / 100.0f;
     const bool square = shape_->get() > 0.5f;
-    const float inc = rate_->get() / (float)sr_;
+    // When synced, the LFO period IS one division at the board tempo, so the
+    // rate is its reciprocal (ms -> Hz). Otherwise the manual Rate knob.
+    const float rateHz =
+        sync_->get() > 0.5f
+            ? 1000.0f / tempo::divisionMs((int)div_->get(), tempo::bpm())
+            : rate_->get();
+    const float inc = rateHz / (float)sr_;
     const float smooth = square ? 0.02f : 1.0f;  // tame square edges only
 
     for (int i = 0; i < n; i++) {
@@ -55,7 +66,7 @@ public:
 private:
   double sr_ = 48000.0;
   float phase_ = 0.0f, gain_ = 1.0f;
-  Param *rate_, *depth_, *shape_;
+  Param *rate_, *depth_, *shape_, *sync_, *div_;
 };
 
 }  // namespace fx

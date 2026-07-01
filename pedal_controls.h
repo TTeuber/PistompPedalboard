@@ -16,6 +16,12 @@ struct PedalControls {
   std::atomic<float> masterLevel{1.0f};  // post-chain master volume (0..2)
   std::atomic<bool>  bypassed{false};     // true = whole chain bypassed (dry DI)
 
+  // Board tempo in BPM (20..300). Beat-synced effects (Delay/Tremolo) read this
+  // via tempo::bpm() -- tempo::setSource() points that accessor here at startup.
+  // Saved per-rig alongside masterLevel. Written by the web/UI thread (numeric
+  // entry + tap tempo), read lock-free by the audio thread.
+  std::atomic<double> bpm{120.0};
+
   // Latched footswitch state, FS1..FS4 (engaged-by-default, like the physical
   // switches). Lives here -- not privately in the UiController -- so the web
   // server can toggle a footswitch too and BOTH surfaces (device LEDs/LCD + the

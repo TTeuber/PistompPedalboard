@@ -27,6 +27,7 @@
   import AddFxModal from './lib/AddFxModal.svelte';
   import Fader from './lib/controls/Fader.svelte';
   import Button from './lib/controls/Button.svelte';
+  import TempoControl from './lib/TempoControl.svelte';
 
   let tunerOpen = $state(false);
   // The FX slot the add-effect modal will fill, or null when it's closed.
@@ -98,6 +99,7 @@
       <span class="telemetry">{telem}</span>
       <TunerButton active={tunerOpen} onclick={() => (tunerOpen = true)} />
       <Button href="#experiments" title="Component sandbox">Lab</Button>
+      <TempoControl />
       <div class="master">
         <span class="master-label">Master</span>
         <Fader

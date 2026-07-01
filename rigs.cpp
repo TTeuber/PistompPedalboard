@@ -21,6 +21,7 @@ namespace rigs {
 nlohmann::json capture(const Chain& chain, const PedalControls& ctl) {
   json doc;
   doc["master"] = ctl.masterLevel.load();
+  doc["bpm"] = ctl.bpm.load();
   doc["bypassed"] = ctl.bypassed.load();
 
   // FX grid layout: per slot, which kind sits there (null = empty). The loader
@@ -53,6 +54,8 @@ void apply(const nlohmann::json& doc, Chain& chain, PedalControls& ctl,
            FxFactory& factory) {
   if (doc.contains("master") && doc["master"].is_number())
     ctl.masterLevel.store((float)doc["master"].get<double>());
+  if (doc.contains("bpm") && doc["bpm"].is_number())
+    ctl.bpm.store(std::clamp(doc["bpm"].get<double>(), 20.0, 300.0));
   if (doc.contains("bypassed") && doc["bypassed"].is_boolean())
     ctl.bypassed.store(doc["bypassed"].get<bool>());
 

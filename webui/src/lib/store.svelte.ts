@@ -11,6 +11,7 @@ import type { BoardState, Meters, PedalPresetList, Telemetry } from './types.js'
 
 export const board: BoardState = $state({
   master: 1,
+  bpm: 120,
   bypassed: false,
   fxSlotCount: 8,
   footswitches: [true, true, true, true], // FS1..FS4 latched engaged-state
@@ -64,11 +65,29 @@ export async function loadPedalPresetNamesByKind(kind: string): Promise<string[]
 export function applyState(s: Partial<BoardState> | null): void {
   if (!s) return;
   if (s.master !== undefined) board.master = s.master;
+  if (s.bpm !== undefined) board.bpm = s.bpm;
   if (s.bypassed !== undefined) board.bypassed = s.bypassed;
   if (s.fxSlotCount !== undefined) board.fxSlotCount = s.fxSlotCount;
   if (s.footswitches !== undefined) board.footswitches = s.footswitches;
   if (s.effects !== undefined) board.effects = s.effects;
   if (s.fxKinds !== undefined) board.fxKinds = s.fxKinds;
+}
+
+// Set the board tempo. Optimistic: adopt it locally now, the SSE echo confirms.
+export function setTempo(bpm: number): void {
+  board.bpm = bpm;
+  api('/api/tempo', { value: bpm }).catch(console.error);
+}
+
+// Register one tap. The server averages the taps into a BPM and returns the
+// current tempo; adopt it so the field tracks your tapping without waiting on SSE.
+export async function tapTempo(): Promise<void> {
+  try {
+    const r = await api<{ bpm: number }>('/api/tap', {});
+    if (r && r.bpm > 0) board.bpm = r.bpm;
+  } catch {
+    /* ignore a dropped tap */
+  }
 }
 
 // Open the live stream. EventSource auto-reconnects on a dropped connection; we

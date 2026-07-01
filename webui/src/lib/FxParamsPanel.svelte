@@ -10,6 +10,18 @@
   // The currently selected FX pedal, or null when nothing is selected.
   let { fx }: { fx: Effect | null } = $props();
 
+  // Beat-sync coupling: a synced effect (has a `sync` param) drives its time from
+  // `div` at the board tempo, so the manual Time/Rate knob is inert; when sync is
+  // off, `div` is inert. Dim whichever control isn't doing anything so it's clear.
+  const sync = $derived(fx?.params.find((p) => p.id === 'sync'));
+  const synced = $derived(!!sync && sync.value > 0.5);
+  function inert(id: string): boolean {
+    if (!sync) return false;
+    if (id === 'time' || id === 'rate') return synced;
+    if (id === 'div') return !synced;
+    return false;
+  }
+
   function togglePower() {
     if (!fx) return;
     const on = !fx.enabled;
@@ -33,7 +45,9 @@
     <PedalPresets {fx} />
 
     {#each fx.params as p (p.id)}
-      <ParamControl effectType={fx.type} {p} />
+      <div class:inert={inert(p.id)}>
+        <ParamControl effectType={fx.type} {p} />
+      </div>
     {/each}
 
     <AssignStrip {fx} />
@@ -55,6 +69,10 @@
     color: var(--accent);
   }
   .remove { width: 100%; margin-top: var(--sp-4); }
+
+  /* An inert control (manual Time while synced, or Div while free-running) is
+     dimmed and non-interactive so the active one reads clearly. */
+  .inert { opacity: 0.4; pointer-events: none; transition: opacity var(--t-fast); }
 
   .empty {
     color: var(--muted);

@@ -45,6 +45,7 @@
 #include "manifest.h"
 #include "pedal_controls.h"
 #include "rigs.h"
+#include "tempo.h"
 #include "ui/ui_controller.h"
 #include "ui_events.h"
 #include "web_server.h"
@@ -423,6 +424,10 @@ int main(int argc, char **argv) {
   std::string modelPath = "NAM_Models/Amp.nam";
   if (argc > 1)
     modelPath = argv[1];
+
+  // Point the tempo accessor at the board BPM so beat-synced effects (Delay,
+  // Tremolo) resolve tempo::bpm() to real state. Once, before audio goes live.
+  tempo::setSource(&g_ctl.bpm);
 
   std::filesystem::path base = exe_dir();
   std::string webDir = (base / "web").string();

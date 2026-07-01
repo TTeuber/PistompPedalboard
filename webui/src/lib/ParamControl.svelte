@@ -21,7 +21,11 @@
   // A couple of params render as something other than a slider, matching the
   // device: a 0..1 unit-less value is an on/off toggle (e.g. Reverb "Freeze"); an
   // enumerated value is a dropdown -- keyed by param id (e.g. Tremolo's "shape").
-  const ENUMS: Record<string, string[]> = { shape: ['Sine', 'Square'] };
+  // `div` mirrors tempo::kDivisions in tempo.h BY INDEX -- keep in the same order.
+  const ENUMS: Record<string, string[]> = {
+    shape: ['Sine', 'Square'],
+    div: ['1/1', '1/2', '1/2.', '1/4', '1/4.', '1/4T', '1/8', '1/8.', '1/8T', '1/16'],
+  };
 
   // Local mirror of the param value. We send this to the device on input, and
   // adopt the device's value when it changes underneath us -- UNLESS the user is

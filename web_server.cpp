@@ -56,6 +56,7 @@ json fullState(const Chain& chain, const PedalControls& ctl,
                const FxFactory& factory) {
   json doc;
   doc["master"] = ctl.masterLevel.load();
+  doc["bpm"] = ctl.bpm.load();
   doc["bypassed"] = ctl.bypassed.load();
   doc["fxSlotCount"] = Chain::kFxSlots;
 
@@ -201,6 +202,24 @@ void WebServer::setupRoutes() {
     if (!parseBody(req, res, b)) return;
     ctl_.masterLevel.store((float)b.value("value", 1.0));
     ok(res);
+  });
+
+  // {value} -- set board tempo in BPM (clamped 20..300). Beat-synced effects
+  // (Delay/Tremolo) pick it up on their next block via tempo::bpm().
+  svr_->Post("/api/tempo", [this](const httplib::Request& req, httplib::Response& res) {
+    json b;
+    if (!parseBody(req, res, b)) return;
+    ctl_.bpm.store(std::clamp(b.value("value", 120.0), 20.0, 300.0));
+    ok(res);
+  });
+
+  // Tap tempo: each POST is one tap. Once the taps settle into a tempo, store it
+  // and return {bpm}; until then return {bpm: 0} (need another tap). The SSE
+  // state stream echoes the new BPM to every connected client.
+  svr_->Post("/api/tap", [this](const httplib::Request&, httplib::Response& res) {
+    double bpm = tap_.tap();
+    if (bpm > 0.0) ctl_.bpm.store(std::clamp(bpm, 20.0, 300.0));
+    res.set_content(json{{"bpm", ctl_.bpm.load()}}.dump(), "application/json");
   });
 
   // {bypassed}

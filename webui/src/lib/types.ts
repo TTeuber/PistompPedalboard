@@ -33,6 +33,7 @@ export interface FxKind {
 
 export interface BoardState {
   master: number;
+  bpm: number; // board tempo, drives beat-synced effects (Delay/Tremolo)
   bypassed: boolean;
   fxSlotCount: number;
   footswitches: boolean[]; // FS1..FS4 latched engaged-state

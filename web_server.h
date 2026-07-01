@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include "tempo.h"
+
 #include <memory>
 #include <string>
 #include <thread>
@@ -41,4 +43,5 @@ private:
   std::string baseDir_;     // library root (parent of the three dirs above)
   std::unique_ptr<httplib::Server> svr_;
   std::thread thread_;
+  tempo::TapTempo tap_;     // tap-tempo accumulator for POST /api/tap
 };

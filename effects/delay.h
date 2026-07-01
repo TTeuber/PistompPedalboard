@@ -10,6 +10,7 @@
 
 #include "../effect.h"
 #include "../dsp_util.h"
+#include "../tempo.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -26,6 +27,10 @@ public:
     mix_      = addParam("mix",      "Mix",       "%",  0,  100,  30);
     tone_     = addParam("tone",     "Tone",      "%",  0,  100,  55);
     pingpong_ = addParam("pingpong", "Ping-Pong", "",   0,  1,    0);  // toggle
+    // Beat sync: when on, Time is ignored and the delay tracks Div at the board
+    // tempo (tempo::bpm()). Default Div = "1/8" (index 6 in tempo::kDivisions).
+    sync_     = addParam("sync",     "Sync",      "",   0, 1, 0);              // toggle
+    div_      = addParam("div",      "Div",       "",   0, tempo::kDivCount - 1, 6);  // enum
   }
 
   void prepare(double sr, int maxBlock) override {
@@ -42,8 +47,11 @@ public:
   }
 
   void process(float* L, float* R, int n) noexcept override {
+    const float timeMs = sync_->get() > 0.5f
+                             ? tempo::divisionMs((int)div_->get(), tempo::bpm())
+                             : time_->get();
     const float delaySamps =
-        std::clamp(time_->get(), 1.0f, kMaxMs) * 0.001f * (float)sr_;
+        std::clamp(timeMs, 1.0f, kMaxMs) * 0.001f * (float)sr_;
     const float fb = fb_->get() / 100.0f;
     const float mix = mix_->get() / 100.0f;
     const bool ping = pingpong_->get() > 0.5f;
@@ -77,7 +85,7 @@ private:
   double sr_ = 48000.0;
   juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> line_;
   OnePole toneL_, toneR_;
-  Param *time_, *fb_, *mix_, *tone_, *pingpong_;
+  Param *time_, *fb_, *mix_, *tone_, *pingpong_, *sync_, *div_;
 };
 
 }  // namespace fx
