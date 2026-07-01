@@ -14,6 +14,8 @@
 #include "../rigs.h"
 #include "../setlists.h"
 #include "../effects/tuner.h"
+#include "../effects/gate.h"
+#include "../effects/comp.h"
 
 #include "leds.h"
 #include "input_level.h"
@@ -34,9 +36,12 @@ const lv_color_t kFaint = LV_COLOR_MAKE(0x5C, 0x58, 0x4F);     // --faint (hints
 const lv_color_t kPanel = LV_COLOR_MAKE(0x1C, 0x1C, 0x23);     // --panel (containers)
 const lv_color_t kInset = LV_COLOR_MAKE(0x15, 0x15, 0x1B);     // --inset (wells/knob bg)
 const lv_color_t kLine = LV_COLOR_MAKE(0x45, 0x45, 0x4F);      // --line (hairline border)
-const lv_color_t kGood = LV_COLOR_MAKE(0x3F, 0xAE, 0x74);      // --emerald
-const lv_color_t kWarn = LV_COLOR_MAKE(0xE0, 0xA3, 0x41);      // --topaz
-const lv_color_t kBad = LV_COLOR_MAKE(0xD3, 0x4A, 0x5E);       // --ruby
+const lv_color_t kLine2 = LV_COLOR_MAKE(0x5C, 0x5C, 0x68);     // --line-2 (switch handle off)
+const lv_color_t kGood = LV_COLOR_MAKE(0x3F, 0xAE, 0x74);      // --emerald (amp knob)
+const lv_color_t kWarn = LV_COLOR_MAKE(0xE0, 0xA3, 0x41);      // --topaz (gain-reduction meter)
+const lv_color_t kBad = LV_COLOR_MAKE(0xD3, 0x4A, 0x5E);       // --ruby (gate knob/marker)
+const lv_color_t kSapphire = LV_COLOR_MAKE(0x4F, 0x7F, 0xD6);  // --sapphire (comp knob/marker)
+const lv_color_t kAmethyst = LV_COLOR_MAKE(0x9A, 0x6C, 0xD0);  // --amethyst (eq knob)
 
 constexpr float kMasterMax = 2.0f;
 constexpr float kMasterStep = 0.05f;
@@ -87,7 +92,7 @@ lv_obj_t* mkContainer(lv_obj_t* parent, int w, int h) {
 // (controls/Knob.svelte) -- an inset track ring with a gold indicator swept by
 // value. The encoders drive the value, so the arc never takes pointer input and
 // shows no draggable knob dot. Caller positions it and sets the value/center text.
-lv_obj_t* mkKnob(lv_obj_t* parent, int d) {
+lv_obj_t* mkKnob(lv_obj_t* parent, int d, lv_color_t col = kAccent) {
   lv_obj_t* a = lv_arc_create(parent);
   lv_obj_set_size(a, d, d);
   lv_arc_set_rotation(a, 135);
@@ -99,7 +104,7 @@ lv_obj_t* mkKnob(lv_obj_t* parent, int d) {
   lv_obj_set_style_arc_width(a, 5, LV_PART_MAIN);
   lv_obj_set_style_arc_width(a, 5, LV_PART_INDICATOR);
   lv_obj_set_style_arc_color(a, kInset, LV_PART_MAIN);
-  lv_obj_set_style_arc_color(a, kAccent, LV_PART_INDICATOR);
+  lv_obj_set_style_arc_color(a, col, LV_PART_INDICATOR);   // per-effect tint (web KNOB_COLORS)
   lv_obj_set_style_bg_opa(a, LV_OPA_TRANSP, LV_PART_MAIN);   // hollow center
   lv_obj_set_style_border_width(a, 0, LV_PART_MAIN);
   return a;
@@ -146,13 +151,16 @@ void UiController::goTo(Page p, Effect* fx) {
 void UiController::rebuild() {
   items_.clear();
   focus_ = 0;
+  editing_ = false;
   homeMaster_ = homeRig_ = masterBar_ = masterVal_ = powerLbl_ = nullptr;
+  inLvlBar_ = inLvlVal_ = inGateMark_ = inCompMark_ = inGrBar_ = inGrVal_ = nullptr;
+  outLBar_ = outLVal_ = outRBar_ = outRVal_ = nullptr;
   for (int k = 0; k < 3; k++) ctlName_[k] = ctlVal_[k] = ctlArc_[k] = nullptr;
 
   switch (page_) {
     case Home:          buildHome();         break;
-    case InputList:
-    case OutputList:    buildList(page_);    break;
+    case InputPage:     buildInputPage();    break;
+    case OutputPage:    buildOutputPage();   break;
     case HintPage:      buildHint();         break;
     case FxPicker:      buildFxPicker();     break;
     case AssignPage:    buildAssign();       break;
@@ -178,9 +186,18 @@ void UiController::moveFocus(int dir) {
 
 void UiController::applyFocus() {
   for (int i = 0; i < (int)items_.size(); i++) {
+    FocusItem& it = items_[(size_t)i];
     bool f = (i == focus_);
-    lv_obj_set_style_border_color(items_[(size_t)i].obj, f ? kAccent : kLine, 0);
-    lv_obj_set_style_border_width(items_[(size_t)i].obj, f ? 2 : 1, 0);
+    // Knob cells carry no resting border -- the section boxes group them, so the
+    // cursor ring is their only outline. (Switches keep their own track border;
+    // list rows keep their hairline.) While editing the focused knob, the ring
+    // turns bright gold and thickens for an unmistakable "now turning" cue.
+    bool editingThis = editing_ && f && it.action == ActEditParam;
+    bool borderless = (it.action == ActEditParam);
+    int w = f ? (editingThis ? 3 : 2) : (borderless ? 0 : 1);
+    lv_color_t c = f ? (editingThis ? kAccentHi : kAccent) : kLine;
+    lv_obj_set_style_border_color(it.obj, c, 0);
+    lv_obj_set_style_border_width(it.obj, w, 0);
   }
 }
 
@@ -189,8 +206,8 @@ void UiController::select() {
   FocusItem it = items_[(size_t)focus_];
   switch (it.action) {
     case ActBack:        back(); break;
-    case ActGotoInput:   goTo(InputList); break;
-    case ActGotoOutput:  goTo(OutputList); break;
+    case ActGotoInput:   goTo(InputPage); break;
+    case ActGotoOutput:  goTo(OutputPage); break;
     case ActGotoMenu:    goTo(MenuPage); break;
     case ActGotoHint:    goTo(HintPage); break;
     case ActOpenEffect:  paramBase_ = 0; goTo(PedalControl, it.fx); break;
@@ -211,6 +228,7 @@ void UiController::select() {
     case ActTogglePower:
       if (current_) current_->enabled.store(!current_->enabled.load());
       break;
+    case ActEditParam: break;   // Input/Output pages route NavSelect to ioSelect()
     case ActToggleBypass: ctl_.bypassed.store(!ctl_.bypassed.load()); break;
     case ActToggleTuner:
       if (tuner_) tuner_->enabled.store(!tuner_->engaged());
@@ -303,23 +321,19 @@ void UiController::select() {
 void UiController::back() {
   switch (page_) {
     case Home: break;
-    case InputList:
-    case OutputList:
+    case InputPage:
+    case OutputPage:
     case HintPage:
     case MenuPage:      goTo(Home); break;
     case FxPicker:
     case AssignPage:    goTo(Home); break;
     case MasterControl: goTo(Home); break;
-    case PedalControl: {
-      Page parent = Home;
-      if (current_) {
-        if (current_->section == Section::Input)  parent = InputList;
-        else if (current_->section == Section::Output) parent = OutputList;
-        else parent = Home;
-      }
-      goTo(parent);
+    case PedalControl:
+      // Only FX-section pedals open the per-pedal control page now (Input/Output
+      // effects are edited inline on their own combined pages), so Back lands on
+      // the FX grid (Home).
+      goTo(Home);
       break;
-    }
     case RigsPage:      goTo(MenuPage); break;
     case PresetPage:    goTo(PedalControl, current_); break;
     case SetlistList:   goTo(MenuPage); break;
@@ -535,25 +549,355 @@ void UiController::buildHint() {
   }
 }
 
-void UiController::buildList(Page p) {
-  lv_obj_t* scr = newScreen();
-  Section sec = Section::Input;
-  const char* title = "INPUT";
-  if (p == OutputList) { sec = Section::Output; title = "OUTPUT"; }
-  topBar(scr, title);
+// The per-effect knob tint, matching the web UI (Pedal.svelte KNOB_COLORS): the
+// input/output gain stages stay gold, gate is red, comp blue, amp emerald, eq
+// amethyst. Keyed by base kind so duplicate suffixes ("comp-2") still map.
+lv_color_t UiController::knobColorFor(const Effect* fx) const {
+  std::string k = fxBaseKind(fx->type_id());
+  if (k == "gate") return kBad;
+  if (k == "comp") return kSapphire;
+  if (k == "amp")  return kGood;
+  if (k == "eq")   return kAmethyst;
+  return kAccent;   // input / output gain
+}
 
-  int row = 0;
-  if (p == OutputList) {
-    lv_obj_t* o = addRow(scr, row++, ActOpenMaster, nullptr, 0);
-    (void)o;
-    lv_label_set_text(items_.back().lbl, "Output Level  >");
+// A titled section box. Flat like the home dashboard's cells (no rounded "card"
+// chrome -- every pixel counts on 320x240): black fill, a single hairline border,
+// square corners. Takes INCLUSIVE bounds [x0,x1]x[y0,y1]; neighbours that share a
+// boundary value overlap by 1px so their borders draw as one merged line. The
+// title sits centered along the top in gold. Not a focus target -- pure chrome
+// behind the knob cells / switches / meters.
+lv_obj_t* UiController::groupBox(lv_obj_t* scr, int x0, int y0, int x1, int y1,
+                                 const char* title) {
+  lv_obj_t* g = lv_obj_create(scr);
+  lv_obj_set_size(g, x1 - x0 + 1, y1 - y0 + 1);
+  lv_obj_align(g, LV_ALIGN_TOP_LEFT, x0, y0);
+  lv_obj_clear_flag(g, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(g, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(g, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(g, kLine, 0);
+  lv_obj_set_style_border_width(g, 1, 0);
+  lv_obj_set_style_radius(g, 0, 0);
+  lv_obj_set_style_pad_all(g, 0, 0);
+  if (title && *title) {
+    lv_obj_t* t = lv_label_create(g);
+    lv_label_set_text(t, title);
+    lv_obj_set_style_text_color(t, kAccent, 0);
+    lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 3);
   }
-  for (auto* fx : chain_.effects()) {
-    if (fx->section != sec) continue;
-    addRow(scr, row++, ActOpenEffect, fx, 0);
-    setEffectRowText(items_.back());
+  return g;
+}
+
+// One knob param as a focusable cell: a swept-fill knob (tinted per effect) over
+// a caption that shows the param NAME by default and swaps to its VALUE while
+// editing (matching the web's name<->value caption). The cell is transparent --
+// its border only lights up under the nav cursor (applyFocus). Registered as an
+// ActEditParam focus item carrying the effect + param index.
+void UiController::paramCell(lv_obj_t* scr, int x, int y, int w, int h,
+                             Effect* fx, int paramIdx, lv_color_t col) {
+  Param* p = fx->params[(size_t)paramIdx].get();
+
+  lv_obj_t* cell = lv_obj_create(scr);
+  lv_obj_set_size(cell, w, h);
+  lv_obj_align(cell, LV_ALIGN_TOP_LEFT, x, y);
+  lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(cell, 0, 0);   // applyFocus paints it when focused
+  lv_obj_set_style_radius(cell, 6, 0);
+  lv_obj_set_style_pad_all(cell, 0, 0);
+
+  lv_obj_t* arc = mkKnob(cell, 32, col);
+  lv_obj_align(arc, LV_ALIGN_TOP_MID, 0, 4);
+  lv_arc_set_value(arc, paramPct(p));
+
+  // Name + value share the bottom caption slot; we flip HIDDEN between them.
+  lv_obj_t* nm = lv_label_create(cell);
+  lv_label_set_text(nm, p->name.c_str());
+  lv_obj_set_style_text_color(nm, kMuted, 0);
+  lv_obj_align(nm, LV_ALIGN_BOTTOM_MID, 0, -1);
+
+  lv_obj_t* vl = lv_label_create(cell);
+  char vb[32];
+  fmtParam(vb, sizeof vb, p);
+  lv_label_set_text(vl, vb);
+  lv_obj_set_style_text_color(vl, kText, 0);
+  lv_obj_align(vl, LV_ALIGN_BOTTOM_MID, 0, -1);
+  lv_obj_add_flag(vl, LV_OBJ_FLAG_HIDDEN);
+
+  FocusItem it;
+  it.obj = cell; it.lbl = nm; it.arc = arc; it.val = vl;
+  it.action = ActEditParam; it.fx = fx; it.idx = paramIdx;
+  items_.push_back(it);
+}
+
+// A slide switch for an effect's enable (the sketch/web Switch): a rounded inset
+// track with a handle that rests left (off, grey) and slides right + lights gold
+// when on. The track is the focus target; clicking it flips fx->enabled. The
+// handle position/colour is refreshed each frame from the live enabled flag.
+void UiController::switchCell(lv_obj_t* scr, int x, int y, Effect* fx) {
+  const int tw = 38, th = 20;
+  lv_obj_t* track = lv_obj_create(scr);
+  lv_obj_set_size(track, tw, th);
+  lv_obj_align(track, LV_ALIGN_TOP_LEFT, x, y);
+  lv_obj_clear_flag(track, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_set_style_bg_color(track, kInset, 0);
+  lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_color(track, kLine, 0);
+  lv_obj_set_style_border_width(track, 1, 0);
+  lv_obj_set_style_radius(track, 5, 0);
+  lv_obj_set_style_pad_all(track, 0, 0);
+
+  lv_obj_t* handle = lv_obj_create(track);
+  lv_obj_set_size(handle, tw / 2 - 2, th - 6);
+  lv_obj_set_style_radius(handle, 4, 0);
+  lv_obj_set_style_border_width(handle, 0, 0);
+  lv_obj_set_style_pad_all(handle, 0, 0);
+  lv_obj_clear_flag(handle, LV_OBJ_FLAG_SCROLLABLE);
+  bool on = fx->enabled.load();
+  lv_obj_set_style_bg_color(handle, on ? kAccent : kLine2, 0);
+  lv_obj_align(handle, on ? LV_ALIGN_RIGHT_MID : LV_ALIGN_LEFT_MID, on ? -1 : 1, 0);
+
+  FocusItem it;
+  it.obj = track; it.arc = handle; it.action = ActTogglePower; it.fx = fx;
+  items_.push_back(it);
+}
+
+// A display-only level meter (the input/output VU + the gain-reduction bar): a
+// caption row (label left, value right) over an inset bar. `fromEnd` fills from
+// the right edge instead of the left (the gain-reduction meter, per the sketch).
+// Returns the bar; the value label comes back through `outVal`.
+lv_obj_t* UiController::meterBar(lv_obj_t* scr, int x, int y, int w,
+                                 const char* label, lv_obj_t** outVal,
+                                 bool fromEnd) {
+  lv_obj_t* nm = lv_label_create(scr);
+  lv_label_set_text(nm, label);
+  lv_obj_set_style_text_color(nm, kMuted, 0);
+  lv_obj_align(nm, LV_ALIGN_TOP_LEFT, x, y);
+
+  lv_obj_t* vl = lv_label_create(scr);
+  lv_obj_set_width(vl, 64);
+  lv_obj_set_style_text_align(vl, LV_TEXT_ALIGN_RIGHT, 0);
+  lv_obj_set_style_text_color(vl, kText, 0);
+  lv_label_set_text(vl, "");
+  lv_obj_align(vl, LV_ALIGN_TOP_LEFT, x + w - 64, y);
+  *outVal = vl;
+
+  lv_obj_t* bar = lv_bar_create(scr);
+  lv_obj_set_size(bar, w, 14);
+  lv_obj_align(bar, LV_ALIGN_TOP_LEFT, x, y + 18);
+  lv_bar_set_range(bar, 0, 1000);
+  if (fromEnd) lv_bar_set_mode(bar, LV_BAR_MODE_RANGE);
+  lv_obj_set_style_radius(bar, 3, LV_PART_MAIN);
+  lv_obj_set_style_bg_color(bar, kInset, LV_PART_MAIN);
+  lv_obj_set_style_border_color(bar, kLine, LV_PART_MAIN);
+  lv_obj_set_style_border_width(bar, 1, LV_PART_MAIN);
+  lv_obj_set_style_radius(bar, 3, LV_PART_INDICATOR);
+  lv_obj_set_style_bg_color(bar, kGood, LV_PART_INDICATOR);
+  return bar;
+}
+
+// The combined Input page: the gain stage + noise gate + compressor (knobs and
+// enable switches) over the input level + gain-reduction meters, mirroring the
+// web UI's whole input section. One nav encoder edits everything (see ioSelect).
+void UiController::buildInputPage() {
+  lv_obj_t* scr = newScreen();
+  Effect* inGain = chain_.find("input");
+  Effect* gate   = chain_.find("gate");
+  Effect* comp   = chain_.find("comp");
+  const int CW = 80, CH = 52;   // knob-cell size (wide enough that "Threshold" fits)
+
+  // Section boxes: flat, edge-to-edge, borders merged at shared boundaries.
+  groupBox(scr, 0, 0, 95, 81, "Input");
+  groupBox(scr, 95, 0, 319, 81, "Noise Gate");
+  groupBox(scr, 0, 81, 319, 162, "Compressor");
+  groupBox(scr, 0, 162, 319, 200, nullptr);   // input level meter
+  groupBox(scr, 0, 200, 319, 239, nullptr);   // gain-reduction meter
+
+  // Band 1: Input gain | Noise Gate (Threshold, Release) + enable switch.
+  if (inGain) paramCell(scr, 7, 24, CW, CH, inGain, 0, knobColorFor(inGain));
+  if (gate) {
+    switchCell(scr, 277, 6, gate);
+    paramCell(scr, 108, 24, CW, CH, gate, 0, knobColorFor(gate));   // Threshold
+    paramCell(scr, 196, 24, CW, CH, gate, 1, knobColorFor(gate));   // Release
   }
+
+  // Band 2: Compressor (Threshold, Ratio, Makeup) + enable switch.
+  if (comp) {
+    switchCell(scr, 277, 86, comp);
+    lv_color_t cc = knobColorFor(comp);
+    paramCell(scr, 16, 104, CW, CH, comp, 0, cc);    // Threshold
+    paramCell(scr, 120, 104, CW, CH, comp, 1, cc);   // Ratio
+    paramCell(scr, 224, 104, CW, CH, comp, 2, cc);   // Makeup
+  }
+
+  // Band 3: input level (with gate/comp threshold markers) over gain reduction,
+  // stacked full-width (matching the output page's L-over-R meters).
+  inLvlBar_ = meterBar(scr, 9, 168, 300, "Input", &inLvlVal_);
+  inBarW_ = 300;
+  auto mkMark = [&](lv_color_t c) -> lv_obj_t* {
+    lv_obj_t* m = lv_obj_create(inLvlBar_);
+    lv_obj_set_size(m, 2, 14);
+    lv_obj_set_style_bg_color(m, c, 0);
+    lv_obj_set_style_bg_opa(m, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(m, 0, 0);
+    lv_obj_set_style_radius(m, 0, 0);
+    lv_obj_set_style_pad_all(m, 0, 0);
+    lv_obj_clear_flag(m, LV_OBJ_FLAG_SCROLLABLE);
+    return m;
+  };
+  if (gate) inGateMark_ = mkMark(kBad);
+  if (comp) inCompMark_ = mkMark(kSapphire);
+
+  inGrBar_ = meterBar(scr, 9, 206, 300, "Gain Reduction", &inGrVal_, /*fromEnd=*/true);
+  lv_obj_set_style_bg_color(inGrBar_, kWarn, LV_PART_INDICATOR);
+
   focus_ = 0;
+}
+
+// The combined Output page: EQ on the top row, amp + output gain on the middle
+// row, and the output L/R level meters along the bottom -- the web UI's output
+// section. Same one-encoder editing as the Input page.
+void UiController::buildOutputPage() {
+  lv_obj_t* scr = newScreen();
+  Effect* amp = chain_.find("amp");
+  Effect* eq  = chain_.find("eq");
+  Effect* out = chain_.find("output");
+  const int CW = 80, CH = 52;
+
+  // Section boxes: flat, edge-to-edge, borders merged at shared boundaries.
+  groupBox(scr, 0, 0, 319, 81, "EQ");
+  groupBox(scr, 0, 81, 214, 162, "Amp");
+  groupBox(scr, 214, 81, 319, 162, "Output");
+  groupBox(scr, 0, 162, 319, 200, nullptr);   // output L meter
+  groupBox(scr, 0, 200, 319, 239, nullptr);   // output R meter
+
+  // Band 1: EQ (Low / Mid / High) across the top + enable switch.
+  if (eq) {
+    switchCell(scr, 277, 6, eq);
+    lv_color_t ec = knobColorFor(eq);
+    paramCell(scr, 16, 24, CW, CH, eq, 0, ec);    // Low
+    paramCell(scr, 120, 24, CW, CH, eq, 1, ec);   // Mid
+    paramCell(scr, 224, 24, CW, CH, eq, 2, ec);   // High
+  }
+
+  // Band 2: Amp (Input / Output) + enable switch | Output gain.
+  if (amp) {
+    switchCell(scr, 170, 86, amp);
+    lv_color_t ac = knobColorFor(amp);
+    paramCell(scr, 10, 104, CW, CH, amp, 0, ac);    // Input (drive)
+    paramCell(scr, 92, 104, CW, CH, amp, 1, ac);    // Output (level)
+  }
+  if (out) paramCell(scr, 226, 104, CW, CH, out, 0, knobColorFor(out));
+
+  // Band 3: Output L over R level meters, stacked full-width.
+  outLBar_ = meterBar(scr, 9, 168, 300, "Output L", &outLVal_);
+  outRBar_ = meterBar(scr, 9, 206, 300, "Output R", &outRVal_);
+
+  focus_ = 0;
+}
+
+// Nav click on an Input/Output cell: a knob toggles edit mode (turn-to-change),
+// a switch flips its effect's enable. (NavSelect is routed here from handle().)
+void UiController::ioSelect() {
+  if (focus_ < 0 || focus_ >= (int)items_.size()) return;
+  FocusItem& it = items_[(size_t)focus_];
+  if (it.action == ActEditParam) {
+    editing_ = !editing_;
+    applyFocus();
+  } else if (it.action == ActTogglePower && it.fx) {
+    it.fx->enabled.store(!it.fx->enabled.load());
+  }
+}
+
+// Turn-to-edit on the focused knob (only while editing_). Reuses the same step
+// policy as the FX control page so feel is consistent across the device.
+void UiController::editFocusedParam(int dir) {
+  if (focus_ < 0 || focus_ >= (int)items_.size()) return;
+  FocusItem& it = items_[(size_t)focus_];
+  if (it.action == ActEditParam && it.fx) stepParam(it.fx, it.idx, dir);
+}
+
+// Per-frame refresh for the Input/Output pages: live knob fills, the name<->value
+// caption swap on the editing knob, the enable switches, and the bottom meters.
+void UiController::refreshIoPage() {
+  // dBFS scale runs -60..0 across the bar (0..1000); colour follows the same
+  // green/amber/red policy as the device input VU (warn -12, clip -1 dBFS).
+  auto dbPct   = [](float db) {
+    return (int)std::clamp(lroundf((db + 60.0f) / 60.0f * 1000.0f), 0L, 1000L);
+  };
+  auto dbColor = [](float db) {
+    return db >= -1.0f ? kBad : db >= -12.0f ? kWarn : kGood;
+  };
+  auto setDbText = [](lv_obj_t* l, float db) {
+    if (!l) return;
+    char b[24];
+    if (db <= -59.5f) snprintf(b, sizeof b, "-inf");
+    else              snprintf(b, sizeof b, "%.1f dB", db);
+    lv_label_set_text(l, b);
+  };
+
+  for (int i = 0; i < (int)items_.size(); i++) {
+    FocusItem& it = items_[(size_t)i];
+    if (it.action == ActEditParam && it.fx) {
+      Param* p = it.fx->params[(size_t)it.idx].get();
+      if (it.arc) lv_arc_set_value(it.arc, paramPct(p));
+      // Show the value on the knob being edited; the name otherwise.
+      bool ed = editing_ && (i == focus_);
+      if (it.val && it.lbl) {
+        char vb[32];
+        fmtParam(vb, sizeof vb, p);
+        lv_label_set_text(it.val, vb);
+        if (ed) { lv_obj_clear_flag(it.val, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(it.lbl, LV_OBJ_FLAG_HIDDEN); }
+        else    { lv_obj_add_flag(it.val, LV_OBJ_FLAG_HIDDEN); lv_obj_clear_flag(it.lbl, LV_OBJ_FLAG_HIDDEN); }
+      }
+    } else if (it.action == ActTogglePower && it.fx && it.arc) {
+      bool on = it.fx->enabled.load();
+      lv_obj_set_style_bg_color(it.arc, on ? kAccent : kLine2, 0);
+      lv_obj_align(it.arc, on ? LV_ALIGN_RIGHT_MID : LV_ALIGN_LEFT_MID, on ? -1 : 1, 0);
+    }
+  }
+
+  // --- Input page meters ---
+  if (inLvlBar_) {
+    lv_bar_set_value(inLvlBar_, dbPct(inMeterDb_), LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(inLvlBar_, dbColor(inMeterDb_), LV_PART_INDICATOR);
+    setDbText(inLvlVal_, inMeterDb_);
+    // Gate/comp threshold markers track the live knob values on the -60..0 scale.
+    auto markAt = [&](lv_obj_t* m, Effect* fx) {
+      if (!m || !fx) return;
+      Param* p = fx->param("threshold");
+      if (!p) return;
+      float frac = std::clamp((p->get() + 60.0f) / 60.0f, 0.0f, 1.0f);
+      lv_obj_align(m, LV_ALIGN_LEFT_MID, (int)lroundf(frac * (float)inBarW_) - 1, 0);
+    };
+    markAt(inGateMark_, chain_.find("gate"));
+    markAt(inCompMark_, chain_.find("comp"));
+  }
+  if (inGrBar_) {
+    float gr = 0.0f;
+    if (auto* g = dynamic_cast<fx::Gate*>(chain_.find("gate"))) gr += g->takeGrDbDev();
+    if (auto* c = dynamic_cast<fx::Comp*>(chain_.find("comp"))) gr += c->takeGrDbDev();
+    int pct = (int)std::clamp(lroundf(gr / 20.0f * 1000.0f), 0L, 1000L);  // 0..20 dB scale
+    lv_bar_set_value(inGrBar_, 1000, LV_ANIM_OFF);            // fill eats in from the right
+    lv_bar_set_start_value(inGrBar_, 1000 - pct, LV_ANIM_OFF);
+    if (inGrVal_) { char b[24]; snprintf(b, sizeof b, "%.1f dB", gr); lv_label_set_text(inGrVal_, b); }
+  }
+
+  // --- Output page meters (post-master, L over R) ---
+  if (outLBar_) {
+    lv_obj_t* bars[2] = {outLBar_, outRBar_};
+    lv_obj_t* vals[2] = {outLVal_, outRVal_};
+    for (int c = 0; c < 2; c++) {
+      float pk = ctl_.outPeakDev[c].exchange(0.0f, std::memory_order_relaxed);
+      float db = pk > 1e-6f ? 20.0f * std::log10(pk) : -60.0f;
+      outDb_[c] = std::clamp(std::max(db, outDb_[c] - 1.0f), -60.0f, 6.0f);  // slow fall
+      if (bars[c]) {
+        lv_bar_set_value(bars[c], dbPct(outDb_[c]), LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(bars[c], dbColor(outDb_[c]), LV_PART_INDICATOR);
+      }
+      setDbText(vals[c], outDb_[c]);
+    }
+  }
 }
 
 // Tint a pedal tile and add a small color chip showing which footswitch drives
@@ -1189,6 +1533,20 @@ void UiController::handle(const UiEvent& e) {
     }
     return;
   }
+  // Input/Output pages run the single nav-encoder editing scheme: turn = move the
+  // cursor (or, while editing, change the focused knob); click = start/stop edit
+  // (or flip a switch); Enc1-push (Back) leaves the page. Footswitches, the tuner
+  // hold and rig-step combos still fall through to the shared handlers below.
+  if (page_ == InputPage || page_ == OutputPage) {
+    switch (e.kind) {
+      case UiEvent::NavRotate:
+        if (editing_) editFocusedParam(e.value); else moveFocus(e.value);
+        return;
+      case UiEvent::NavSelect: ioSelect(); return;
+      case UiEvent::Back:      editing_ = false; back(); return;
+      default: break;
+    }
+  }
   switch (e.kind) {
     case UiEvent::NavRotate: moveFocus(e.value); break;
     case UiEvent::NavSelect: select(); break;
@@ -1288,20 +1646,30 @@ void UiController::updateLeds(Leds& leds) {
   // or not we end up pushing a frame.
   const bool useAdc = inputLevel_ && inputLevel_->available();
   VuState vs[2];
+  float dbMax = -120.0f;   // louder channel's level (dBFS) for the Input-page meter
   for (int i = 0; i < 2; i++) {
     float amp;
     VuThresholds th;
+    float db;
     if (useAdc) {
       int raw = inputLevel_->read(i);
       if (raw < 0) raw = 512;                          // read error -> treat as silent
       amp = std::fabs(512.0f - (float)raw) + 512.0f;   // rectify about baseline (analogVU)
       th = adcThresholds();                            // TODO: bias by ALSA capture volume
+      // Map counts-above-baseline to a rough dB via the same units the ADC
+      // thresholds use, so the on-screen bar still tracks (hardware path).
+      db = 20.0f * std::log10(std::max(amp - 512.0f, 1e-3f) / (512.0f / 1.665f));
     } else {
       amp = ctl_.inPeak[i].exchange(0.0f, std::memory_order_relaxed);  // read-and-clear peak-hold
       th = digitalThresholds();
+      db = 20.0f * std::log10(std::max(amp, 1e-6f));   // linear peak -> dBFS (sim path)
     }
+    dbMax = std::max(dbMax, db);
     vs[i] = vu_[i].update(amp, th);
   }
+  // Publish a slow-falling peak for the Input page's level meter (read in
+  // refreshIoPage). The fall keeps it from strobing to -inf between audio blocks.
+  inMeterDb_ = std::clamp(std::max(dbMax, inMeterDb_ - 1.0f), -60.0f, 6.0f);
 
   // Change-detector: footswitch states (bits 0..3) + the two meter states (2 bits
   // each at bits 4..7).
@@ -1395,10 +1763,9 @@ void UiController::refresh() {
               it.fx->enabled.load() ? kText : kMuted, 0);
       break;
 
-    case InputList:
-    case OutputList:
-      for (auto& it : items_)
-        if (it.action == ActOpenEffect) setEffectRowText(it);
+    case InputPage:
+    case OutputPage:
+      refreshIoPage();
       break;
 
     case HintPage:

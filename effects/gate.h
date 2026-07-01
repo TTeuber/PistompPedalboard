@@ -71,11 +71,19 @@ public:
     float cur = grDb_.load(std::memory_order_relaxed);
     while (gr > cur &&
            !grDb_.compare_exchange_weak(cur, gr, std::memory_order_relaxed)) {}
+    // Mirror into the device-UI peak-hold (separate consumer; the on-device
+    // Output/Input meters steal from this one, the browser from grDb_ above --
+    // same split as PedalControls inPeak vs inPeakWeb so neither starves).
+    float curD = grDbDev_.load(std::memory_order_relaxed);
+    while (gr > curD &&
+           !grDbDev_.compare_exchange_weak(curD, gr, std::memory_order_relaxed)) {}
   }
 
   // Largest gain reduction (dB) since the last call; reading clears the peak hold
   // so a disabled gate decays to 0. Called by the web meter (web_server.cpp).
   float takeGrDb() noexcept { return grDb_.exchange(0.0f, std::memory_order_relaxed); }
+  // Same, for the on-device gain-reduction meter (ui_controller.cpp).
+  float takeGrDbDev() noexcept { return grDbDev_.exchange(0.0f, std::memory_order_relaxed); }
 
 private:
   // One-pole smoothing coefficient for a given time constant in milliseconds.
@@ -86,6 +94,7 @@ private:
   double sr_ = 48000.0;
   float env_ = 0.0f, gain_ = 0.0f;
   std::atomic<float> grDb_{0.0f};
+  std::atomic<float> grDbDev_{0.0f};
   Param *thresh_, *release_;
 };
 

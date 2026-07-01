@@ -374,6 +374,12 @@ static pistomp::AudioCallback makeAudioCallback(double budget_s) {
       while (opk[c] > cur && !g_ctl.outPeak[c].compare_exchange_weak(
                                  cur, opk[c], std::memory_order_relaxed)) {
       }
+      // Mirror into the device's own peak-hold (separate consumer; see
+      // PedalControls). The on-device Output page reads-and-clears this one.
+      float curD = g_ctl.outPeakDev[c].load(std::memory_order_relaxed);
+      while (opk[c] > curD && !g_ctl.outPeakDev[c].compare_exchange_weak(
+                                  curD, opk[c], std::memory_order_relaxed)) {
+      }
     }
   };
 }

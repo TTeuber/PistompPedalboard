@@ -52,14 +52,14 @@ public:
   void setInputLevel(pistomp::InputLevel* lvl) { inputLevel_ = lvl; }
 
 private:
-  enum Page { Home, InputList, FxPicker, AssignPage, OutputList,
+  enum Page { Home, InputPage, FxPicker, AssignPage, OutputPage,
               MenuPage, PedalControl, MasterControl,
               NameEntryPage, RigsPage, PresetPage, SetlistList, SetlistView,
               PerfPage, HintPage };
 
   enum Action {
     ActNone, ActBack, ActGotoInput, ActGotoOutput, ActGotoMenu, ActGotoHint,
-    ActOpenEffect, ActOpenMaster, ActTogglePower, ActToggleBypass,
+    ActOpenEffect, ActOpenMaster, ActTogglePower, ActEditParam, ActToggleBypass,
     ActToggleTuner, ActLoadRig, ActParamBank,
     ActOpenPicker, ActAddFx, ActRemoveFx, ActGotoAssign,
     // rigs
@@ -81,7 +81,14 @@ private:
     lv_obj_t* lbl = nullptr;   // inner label, for dynamic text updates
     Action action = ActNone;
     Effect* fx = nullptr;
-    int idx = 0;               // rig index / param-bank payload
+    int idx = 0;               // rig index / param-bank payload / param index
+    // Extra widgets for the Input/Output param cells, kept for per-frame refresh
+    // (trailing so the common 5-field aggregate inits elsewhere still compile):
+    //   ActEditParam  -> arc = the knob, val = the value caption (shown while
+    //                    editing this param; lbl is the name caption otherwise);
+    //   ActTogglePower-> arc = the slide-switch handle (moved to reflect on/off).
+    lv_obj_t* arc = nullptr;
+    lv_obj_t* val = nullptr;
   };
 
   // --- navigation ---
@@ -102,7 +109,25 @@ private:
   void topBar(lv_obj_t* scr, const char* title);   // adds Back as item 0
   lv_obj_t* addRow(lv_obj_t* scr, int rowIndex, Action a, Effect* fx, int idx);
   void buildHome();           // combined: section buttons + live FX grid + actions
-  void buildList(Page p);     // InputList / OutputList
+
+  // --- Input / Output combined pages (single nav-encoder editing) ------------
+  // These mirror the web UI's whole Input / Output sections on one screen: every
+  // pedal's knobs + enable switch, plus the level meters along the bottom. The
+  // nav encoder walks the params/switches; click a knob to edit (turn to change,
+  // click again to stop), click a switch to flip it; Enc1-push backs out.
+  void buildInputPage();
+  void buildOutputPage();
+  lv_color_t knobColorFor(const Effect* fx) const;   // web KNOB_COLORS by kind
+  lv_obj_t* groupBox(lv_obj_t* scr, int x0, int y0, int x1, int y1, const char* title);
+  void paramCell(lv_obj_t* scr, int x, int y, int w, int h,
+                 Effect* fx, int paramIdx, lv_color_t col);
+  void switchCell(lv_obj_t* scr, int x, int y, Effect* fx);
+  lv_obj_t* meterBar(lv_obj_t* scr, int x, int y, int w, const char* label,
+                     lv_obj_t** outVal, bool fromEnd = false);
+  void ioSelect();             // nav click on Input/Output: edit param / flip switch
+  void editFocusedParam(int dir);
+  void refreshIoPage();        // per-frame: knob values, switches, meters
+
   void buildHint();           // hardware-controls cheat sheet
   void buildFxPicker();       // choose an unplaced FX to add
   void buildAssign();         // bind footswitches to FX pedals
@@ -184,6 +209,10 @@ private:
 
   bool tunerActive_ = false;    // tuner full-screen takeover currently shown
 
+  // Input/Output pages: false = nav-turn moves the cursor; true = nav-turn edits
+  // the focused param's value (toggled by clicking a knob). Reset on every page.
+  bool editing_ = false;
+
   uint32_t ledSig_ = 0xFFFFFFFF;                       // last LED frame; -1 = force draw
 
   // dynamic widgets kept for per-frame refresh()
@@ -195,6 +224,21 @@ private:
   lv_obj_t* powerLbl_   = nullptr;
   lv_obj_t* masterBar_  = nullptr;
   lv_obj_t* masterVal_  = nullptr;
+
+  // Input/Output meter widgets (rebuilt per page; null when off that page).
+  float inMeterDb_ = -60.0f;        // latest input level (dBFS), published by updateLeds
+  lv_obj_t* inLvlBar_   = nullptr;  // input level meter
+  lv_obj_t* inLvlVal_   = nullptr;
+  lv_obj_t* inGateMark_ = nullptr;  // gate-threshold marker line on the level bar
+  lv_obj_t* inCompMark_ = nullptr;  // comp-threshold marker line
+  lv_obj_t* inGrBar_    = nullptr;  // gain-reduction meter
+  lv_obj_t* inGrVal_    = nullptr;
+  int       inBarW_     = 0;        // level-bar inner width (for marker placement)
+  lv_obj_t* outLBar_    = nullptr;  // output L/R level meters
+  lv_obj_t* outLVal_    = nullptr;
+  lv_obj_t* outRBar_    = nullptr;
+  lv_obj_t* outRVal_    = nullptr;
+  float     outDb_[2]   = {-60.0f, -60.0f};   // smoothed output level per channel
 
   // tuner takeover widgets
   lv_obj_t* tNote_ = nullptr;

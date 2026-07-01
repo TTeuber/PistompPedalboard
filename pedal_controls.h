@@ -45,5 +45,11 @@ struct PedalControls {
   std::atomic<float> inPeakWeb[2]{};
   std::atomic<float> outPeak[2]{};
 
+  // Device-UI output meter peak-holds, post-master. Mirror outPeak above but with
+  // the on-device Output page as a SEPARATE consumer, so the screen meter and the
+  // browser meter don't steal each other's peaks (same split as inPeak vs
+  // inPeakWeb). Read-and-cleared by the UI thread.
+  std::atomic<float> outPeakDev[2]{};
+
   std::atomic<bool> running{true};        // false = every domain shuts down
 };

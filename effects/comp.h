@@ -74,6 +74,10 @@ public:
     float cur = grDb_.load(std::memory_order_relaxed);
     while (gr > cur &&
            !grDb_.compare_exchange_weak(cur, gr, std::memory_order_relaxed)) {}
+    // Mirror into the device-UI peak-hold (separate consumer; see gate.h).
+    float curD = grDbDev_.load(std::memory_order_relaxed);
+    while (gr > curD &&
+           !grDbDev_.compare_exchange_weak(curD, gr, std::memory_order_relaxed)) {}
 
     for (int i = 0; i < n; i++) { L[i] *= makeup; R[i] *= makeup; }
   }
@@ -81,11 +85,14 @@ public:
   // Largest gain reduction (dB) since the last call; reading clears the peak hold
   // so a disabled comp decays to 0. Called by the web meter (web_server.cpp).
   float takeGrDb() noexcept { return grDb_.exchange(0.0f, std::memory_order_relaxed); }
+  // Same, for the on-device gain-reduction meter (ui_controller.cpp).
+  float takeGrDbDev() noexcept { return grDbDev_.exchange(0.0f, std::memory_order_relaxed); }
 
 private:
   juce::dsp::Compressor<float> comp_;
   Param *thresh_, *ratio_, *makeup_;
   std::atomic<float> grDb_{0.0f};
+  std::atomic<float> grDbDev_{0.0f};
 };
 
 }  // namespace fx
