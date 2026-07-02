@@ -22,7 +22,9 @@
 #include "NAM/get_dsp.h"
 
 #include "chain.h"
+#include "effects/ambient_delay.h"
 #include "effects/amp_nam.h"
+#include "effects/analog_delay.h"
 #include "effects/chorus.h"
 #include "effects/comp.h"
 #include "effects/delay.h"
@@ -34,14 +36,17 @@
 #include "effects/gold_drive.h"
 #include "effects/hall_reverb.h"
 #include "effects/input_gain.h"
+#include "effects/multitap_delay.h"
 #include "effects/octave.h"
 #include "effects/output_gain.h"
 #include "effects/overdrive.h"
 #include "effects/phaser.h"
 #include "effects/plate_reverb.h"
+#include "effects/reverse_delay.h"
 #include "effects/shimmer_reverb.h"
 #include "effects/sustainer.h"
 #include "effects/swell.h"
+#include "effects/tape_echo.h"
 #include "effects/tremolo.h"
 #include "effects/tuner.h"
 #include "effects/vibrato.h"
@@ -495,7 +500,12 @@ int main(int argc, char **argv) {
   g_fx.add("flanger",    "Flanger",    [] { return std::make_unique<fx::Flanger>(); });
   g_fx.add("octave",     "Octave",     [] { return std::make_unique<fx::Octave>(); });
   g_fx.add("swell",      "Auto-Swell", [] { return std::make_unique<fx::Swell>(); });
-  g_fx.add("delay",      "Delay",      [] { return std::make_unique<fx::Delay>(); });
+  g_fx.add("delay",      "Digital",    [] { return std::make_unique<fx::Delay>(); });
+  g_fx.add("tape",       "Tape Echo",  [] { return std::make_unique<fx::TapeEcho>(); });
+  g_fx.add("analog",     "Analog",     [] { return std::make_unique<fx::AnalogDelay>(); });
+  g_fx.add("multitap",   "Multi-Tap",  [] { return std::make_unique<fx::MultiTap>(); });
+  g_fx.add("reverse",    "Reverse",    [] { return std::make_unique<fx::ReverseDelay>(); });
+  g_fx.add("ambient",    "Ambient",    [] { return std::make_unique<fx::AmbientDelay>(); });
   g_fx.add("hall",       "Hall",       [] { return std::make_unique<fx::Hall>(); });
   g_fx.add("plate",      "Plate",      [] { return std::make_unique<fx::Plate>(); });
   g_fx.add("shimmer",    "Shimmer",    [] { return std::make_unique<fx::Shimmer>(); });

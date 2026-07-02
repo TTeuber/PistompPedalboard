@@ -67,6 +67,41 @@
     <path d="M10 8v8" opacity="0.7" />
     <path d="M15 10v4" opacity="0.45" />
     <path d="M20 11.5v1" opacity="0.25" />
+  {:else if kind === 'tape'}
+    <!-- tape echo: two reels with the tape path running between them. -->
+    <circle cx="7" cy="10" r="3.5" />
+    <circle cx="17" cy="10" r="3.5" />
+    <path d="M7 13.5v0" />
+    <path d="M4 18h16" opacity="0.6" />
+    <path d="M7 13.5l1 4.5" opacity="0.6" />
+    <path d="M17 13.5l-1 4.5" opacity="0.6" />
+  {:else if kind === 'analog'}
+    <!-- BBD: decaying echoes riding a slow modulation wave. -->
+    <path d="M4 4v11" />
+    <path d="M10 7v8" opacity="0.7" />
+    <path d="M15 9v6" opacity="0.45" />
+    <path d="M20 11v4" opacity="0.25" />
+    <path d="M3 19q3-3 6 0t6 0 6 0" opacity="0.6" />
+  {:else if kind === 'multitap'}
+    <!-- taps at uneven spacing: the rhythm pattern. -->
+    <path d="M4 5v14" />
+    <path d="M11 8v8" opacity="0.75" />
+    <path d="M14 9.5v5" opacity="0.55" />
+    <path d="M20 8v8" opacity="0.65" />
+  {:else if kind === 'reverse'}
+    <!-- backwards echoes: the taps GROW left to right into the hit. -->
+    <path d="M4 11.5v1" opacity="0.25" />
+    <path d="M9 10v4" opacity="0.45" />
+    <path d="M14 8v8" opacity="0.7" />
+    <path d="M20 5v14" />
+  {:else if kind === 'ambient'}
+    <!-- repeats dissolving into a cloud: echoes fading into dots. -->
+    <path d="M4 5v14" />
+    <path d="M10 8v8" opacity="0.6" />
+    <circle cx="15" cy="10" r="0.8" fill={color} stroke="none" opacity="0.5" />
+    <circle cx="17.5" cy="14" r="0.8" fill={color} stroke="none" opacity="0.4" />
+    <circle cx="20" cy="9" r="0.8" fill={color} stroke="none" opacity="0.3" />
+    <circle cx="21" cy="13" r="0.8" fill={color} stroke="none" opacity="0.2" />
   {:else if kind === 'reverb' || kind === 'hall'}
     <!-- sound spreading outward in a room: nested arcs from a source. -->
     <path d="M4 20a14 14 0 0 1 14-14" />

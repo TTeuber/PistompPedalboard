@@ -25,6 +25,8 @@
   const ENUMS: Record<string, string[]> = {
     shape: ['Sine', 'Square'],
     div: ['1/1', '1/2', '1/2.', '1/4', '1/4.', '1/4T', '1/8', '1/8.', '1/8T', '1/16'],
+    // Mirrors kPatterns in effects/multitap_delay.h BY INDEX -- same order.
+    pattern: ['Quarters', 'Dotted 8th', 'Triplet', 'Shuffle', 'Golden', 'Ping 8th'],
   };
 
   // Local mirror of the param value. We send this to the device on input, and

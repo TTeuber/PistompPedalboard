@@ -31,6 +31,39 @@ custom, better-sounding effects. Tackled incrementally.
       pitch-shifter in the feedback path for the ever-rising ambient wash.
   Old `juce::Reverb` (Freeverb) removed; `hall` is the new default-chain reverb.
 
+- **Delay collection** (absorbs old suggestion "Delay — analog character"): the
+  single delay became a six-pedal collection sharing `effects/delay_dsp.h`
+  (`GlideValue` rate-capped time glide, `Lfo`, `Jitter`, `WowFlutter`,
+  `softLimit` loop ceiling, `Freeze` ramp + recipe, `HighPass1`, `targetMs`):
+    - **Digital** (`delay.h`, keeps kind `"delay"` + old param ids so presets
+      restore) — the old echo plus a 100 Hz loop highpass (repeats shed lows),
+      Spread (R up to +10% time), Freeze, 2 s max time.
+    - **Tape Echo** (new, `tape_echo.h`) — wow/flutter transport modulation
+      (independently-phased L/R = free stereo drift), write-side head-bump/
+      rolloff/HP/tanh color scaled by one Age knob, feedback to 110% for
+      bounded self-oscillation.
+    - **Analog** (new, `analog_delay.h`) — BBD: loop bandwidth follows the
+      glided time (6 kHz at 150 ms → 1.2 kHz at 800 ms) through a 4th-order
+      Butterworth, Memory-Man chorus mod on the read tap (stays on during
+      freeze — the loop "breathes").
+    - **Multi-Tap** (new, `multitap_delay.h`) — mono loop on `rv::Delay1`'s
+      non-advancing `tap()`, six rhythm patterns (dotted-8th default, Golden
+      = phi-spaced ambient wash), constant-power pans scaled by Width.
+    - **Reverse** (new, `reverse_delay.h`) — dual Hann-windowed heads whose
+      delay grows 2 samples/sample (the PitchShift trick at "ratio −1") =
+      backwards playback with a silent wrap point; feedback re-reverses each
+      pass; Spread offsets the R window phase.
+    - **Ambient** (new, `ambient_delay.h`) — allpass diffusers + damping +
+      orthogonal cross-rotation in the loop: repeats smear into a cloud.
+      Freeze showcase: diffusion/rotation are lossless so the frozen slice
+      circulates at exactly unity while the wobbled allpass taps keep
+      rearranging it — an evolving pad, not a static loop.
+    - **All freezable pedals** (not Reverse): input muted, loop gain snaps to
+      exactly unity, lossy coloring crossfaded out, all through a ~50 ms ramp
+      (`dly::Freeze`) — click-free, holds through bypass via hasTails().
+      `dly::softLimit` (unity slope below ~−6 dBFS, ceiling +8 dB) guards
+      every loop, so >100% feedback plateaus instead of blowing up.
+
 - **Drive collection** (was suggestion 3): the three placeholder drives became
   a five-pedal collection with real per-circuit topology, sharing
   `effects/drive_dsp.h` (`OversamplerIIR`, `DcBlock`, `EnvFollower`,
@@ -84,12 +117,6 @@ custom, better-sounding effects. Tackled incrementally.
   input diffusion allpasses, per-band damping, pre-delay param.
 - Then add **shimmer** (pitch-shifted feedback path) — the signature worship
   pad sound.
-
-### 3. Delay — analog character
-
-- Subtle modulation on the repeats (slow LFO wow on the read tap).
-- Gentle saturation in the feedback loop (tape/BBD vibe).
-- Highpass in the feedback loop so repeats shed lows instead of piling up.
 
 ### 4. Compressor — hand-roll it
 
