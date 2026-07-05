@@ -110,11 +110,28 @@ lv_obj_t* mkKnob(lv_obj_t* parent, int d, lv_color_t col = kAccent) {
   return a;
 }
 
+// Enum-like params get text labels, mirroring the web UI's ENUMS map in
+// ParamControl.svelte -- keyed by param id, index-matched to the C++ tables.
+const char* enumLabel(const Param* p, float v) {
+  struct EnumLabels { const char* id; const char* labels[3]; };
+  static const EnumLabels kEnums[] = {
+      {"shape", {"Sine", "Square", nullptr}},
+      {"mode",  {"Mono", "Poly",   nullptr}},  // octave engine
+      {"pitch", {"Up",   "Down",   "Dual"}},   // shimmer octave voicing
+  };
+  int i = (int)lroundf(v);
+  if (i < 0 || i > 2) return nullptr;
+  for (const auto& e : kEnums)
+    if (p->id == e.id) return e.labels[i];
+  return nullptr;
+}
+
 // Format a param value the way the web UI does (unit-aware).
 void fmtParam(char* buf, size_t n, const Param* p) {
   float v = p->get();
   const std::string& u = p->unit;
   float range = p->max - p->min;
+  if (const char* label = enumLabel(p, v)) { snprintf(buf, n, "%s", label); return; }
   if (u == "%")            snprintf(buf, n, "%d%%", (int)lroundf(v));
   else if (u.empty())      (range <= 3.0f) ? snprintf(buf, n, "%d", (int)lroundf(v))
                                            : snprintf(buf, n, "%.2f", v);
@@ -721,13 +738,13 @@ void UiController::buildInputPage() {
     paramCell(scr, 196, 24, CW, CH, gate, 1, knobColorFor(gate));   // Release
   }
 
-  // Band 2: Compressor (Threshold, Ratio, Makeup) + enable switch.
+  // Band 2: Compressor (Threshold, Ratio, Blend) + enable switch.
   if (comp) {
     switchCell(scr, 277, 86, comp);
     lv_color_t cc = knobColorFor(comp);
     paramCell(scr, 16, 104, CW, CH, comp, 0, cc);    // Threshold
     paramCell(scr, 120, 104, CW, CH, comp, 1, cc);   // Ratio
-    paramCell(scr, 224, 104, CW, CH, comp, 2, cc);   // Makeup
+    paramCell(scr, 224, 104, CW, CH, comp, 2, cc);   // Blend
   }
 
   // Band 3: input level (with gate/comp threshold markers) over gain reduction,
