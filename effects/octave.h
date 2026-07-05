@@ -17,7 +17,7 @@
 //       the 4th-order cascade. A stall-relax rule reopens the filter after an
 //       upward note jump; silence resets it to a neutral default.
 //
-//   POLY -- granular dual-tap pitch shifters (rv::PitchShift, the shimmer
+//   POLY -- granular dual-tap pitch shifters (pit::PitchShift, the shimmer
 //   engine): chord-friendly octave up + down at the cost of a little grain
 //   warble and ~20-35 ms of wet-only latency. No tracking at all.
 //
@@ -29,7 +29,7 @@
 
 #include "../effect.h"
 #include "../dsp_util.h"
-#include "reverb_dsp.h"
+#include "pitch_dsp.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -247,7 +247,7 @@ private:
   int sinceFlip_ = 0;                   // samples since the divider flipped
   int pendingInterval_ = 0;             // last flip interval awaiting agreement
   int quietSamps_ = 0;
-  rv::PitchShift psUp_, psDn_;          // poly voices
+  pit::PitchShift psUp_, psDn_;         // poly voices
   int activeMode_ = 0;                  // engine actually running (vs mode_)
   Smoother subS_, upS_, dryS_, modeFadeS_;
   Param *sub_, *up_, *dry_, *tone_, *mode_;

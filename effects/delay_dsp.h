@@ -56,27 +56,10 @@ struct GlideValue {
 };
 
 // ---------------------------------------------------------------------------
-// Phase-accumulator LFO -- the hand-rolled idiom from flanger/tremolo promoted
-// to a struct. next() returns the phase in [0,1); shape it with sine()/
-// raisedCos(). setPhase() offsets L/R instances so channels decorrelate.
-struct Lfo {
-  float phase = 0.0f, inc = 0.0f;
-
-  void setRate(float hz, double fs) noexcept { inc = float(hz / fs); }
-  void setPhase(float p) noexcept { phase = p - std::floor(p); }
-  float next() noexcept {
-    const float p = phase;
-    phase += inc;
-    if (phase >= 1.0f) phase -= 1.0f;
-    return p;
-  }
-  static float sine(float p) noexcept {
-    return std::sin(2.0f * (float)M_PI * p);
-  }
-  static float raisedCos(float p) noexcept {
-    return 0.5f * (1.0f - std::cos(2.0f * (float)M_PI * p));
-  }
-};
+// Phase-accumulator LFO -- promoted to dsp_util.h when the modulation
+// collection became its second collection of consumers; aliased here so the
+// delay pedals keep reading dly::Lfo.
+using ::Lfo;
 
 // ---------------------------------------------------------------------------
 // Lowpassed white noise for tape flutter's random component. xorshift32 mapped

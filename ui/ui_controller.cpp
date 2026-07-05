@@ -113,14 +113,19 @@ lv_obj_t* mkKnob(lv_obj_t* parent, int d, lv_color_t col = kAccent) {
 // Enum-like params get text labels, mirroring the web UI's ENUMS map in
 // ParamControl.svelte -- keyed by param id, index-matched to the C++ tables.
 const char* enumLabel(const Param* p, float v) {
-  struct EnumLabels { const char* id; const char* labels[3]; };
+  struct EnumLabels { const char* id; const char* labels[4]; };
   static const EnumLabels kEnums[] = {
-      {"shape", {"Sine", "Square", nullptr}},
-      {"mode",  {"Mono", "Poly",   nullptr}},  // octave engine
-      {"pitch", {"Up",   "Down",   "Dual"}},   // shimmer octave voicing
+      {"shape",  {"Sine", "Square"}},
+      {"mode",   {"Mono", "Poly"}},             // octave engine
+      {"pitch",  {"Up", "Down", "Dual"}},       // shimmer octave voicing
+      {"stages", {"4", "6", "8"}},              // phaser stage count
+      {"voices", {"1", "2", "3"}},              // chorus voice count
+      {"voice",  {"Chorus", "Vibrato"}},        // uni-vibe voicing
+      {"dmode",  {"1", "2", "3", "4"}},         // dimension mode buttons
+      {"speed",  {"Slow", "Fast"}},             // rotary rotor speed
   };
   int i = (int)lroundf(v);
-  if (i < 0 || i > 2) return nullptr;
+  if (i < 0 || i > 3) return nullptr;
   for (const auto& e : kEnums)
     if (p->id == e.id) return e.labels[i];
   return nullptr;

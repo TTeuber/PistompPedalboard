@@ -53,6 +53,28 @@
     <path d="M8 6v12" opacity="0.8" />
     <path d="M13 6v12" opacity="0.6" />
     <path d="M18 6v12" opacity="0.4" />
+  {:else if kind === 'dimension'}
+    <!-- widening: centre bars with chevrons opening outward left and right. -->
+    <path d="M10.5 8v8" />
+    <path d="M13.5 8v8" />
+    <path d="M7 8l-4 4 4 4" opacity="0.6" />
+    <path d="M17 8l4 4-4 4" opacity="0.6" />
+  {:else if kind === 'detune'}
+    <!-- twin near-identical sines, barely offset: the few-cents double. -->
+    <path d="M2 11q3-5 6 0t6 0 6 0" />
+    <path d="M3.2 13q3-5 6 0t6 0 5 0" opacity="0.45" />
+  {:else if kind === 'vibe'}
+    <!-- the lamp: a bulb with radiating throb ticks over a wave. -->
+    <circle cx="12" cy="8" r="3" />
+    <path d="M12 2.5v1.5" opacity="0.6" />
+    <path d="M6.8 4.5l1.1 1.1" opacity="0.6" />
+    <path d="M17.2 4.5l-1.1 1.1" opacity="0.6" />
+    <path d="M3 17q3-4.5 6 0t6 0 6 0" />
+  {:else if kind === 'rotary'}
+    <!-- rotor swirl: a circle with a rotation arrow, horn dot on the rim. -->
+    <path d="M19 12a7 7 0 1 1-2-4.9" />
+    <path d="M19.5 3.5v4h-4" />
+    <circle cx="12" cy="19" r="1.3" fill={color} stroke="none" />
   {:else if kind === 'octave'}
     <!-- two tones an octave apart: a low and a high cycle stacked. -->
     <path d="M2 8q4-5 8 0t8 0" />

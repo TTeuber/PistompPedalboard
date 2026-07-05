@@ -10,6 +10,7 @@
 
 #include "../effect.h"
 #include "../dsp_util.h"
+#include "pitch_dsp.h"
 #include "reverb_dsp.h"
 
 #include <juce_dsp/juce_dsp.h>
@@ -115,7 +116,7 @@ private:
   rv::FDN8 fdn_;
   rv::Delay1 predelay_line_;
   rv::Allpass diff_[kNAp];
-  rv::PitchShift psUp_, psDn_;
+  pit::PitchShift psUp_, psDn_;
   rv::HighCut lowcut_;
   OnePole shDamp_;
   float apSamps_[kNAp] = {0};

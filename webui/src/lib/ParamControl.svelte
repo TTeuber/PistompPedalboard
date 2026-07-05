@@ -29,6 +29,11 @@
     pattern: ['Quarters', 'Dotted 8th', 'Triplet', 'Shuffle', 'Golden', 'Ping 8th'],
     mode: ['Mono', 'Poly'], // octave engine (effects/octave.h)
     pitch: ['Up', 'Down', 'Dual'], // shimmer octave voicing (effects/shimmer_reverb.h)
+    stages: ['4', '6', '8'], // phaser stage count (effects/phaser.h)
+    voices: ['1', '2', '3'], // chorus voice count (effects/chorus.h)
+    voice: ['Chorus', 'Vibrato'], // uni-vibe voicing (effects/uni_vibe.h)
+    dmode: ['1', '2', '3', '4'], // dimension mode buttons (effects/dimension.h)
+    speed: ['Slow', 'Fast'], // rotary rotor speed (effects/rotary.h)
   };
 
   // Local mirror of the param value. We send this to the device on input, and

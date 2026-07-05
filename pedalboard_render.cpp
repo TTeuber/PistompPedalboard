@@ -6,17 +6,19 @@
 // This is the verification step that catches a too-heavy default before
 // deploying to the Pi.
 //
-// Drive-pedal verification mode (--drive) isolates one gain pedal in an
-// otherwise empty chain so its numbers aren't laundered through the amp/EQ:
-//   --drive <kind>      kind = overdrive|golddrive|distortion|fuzz|sustainer
+// Isolated-pedal verification mode (--fx, or its older alias --drive) puts one
+// pedal in an otherwise empty chain so its numbers aren't laundered through
+// the amp/EQ. Kinds: the five drives (overdrive|golddrive|distortion|fuzz|
+// sustainer) and the modulation collection (chorus|phaser|flanger|vibe|
+// dimension|detune|rotary).
 //   --sweep             step Drive 0/25/50/75/100, print RMS + DC per step
-//                       (checks the loudness-compensation flatness and that
-//                       the DC blockers hold at every gain)
+//                       (drives only: checks the loudness-compensation
+//                       flatness and that the DC blockers hold at every gain)
 //   --freq <hz>         steady sine input instead of the pluck (aliasing
 //                       checks: render a high note, FFT the dump)
 //   -o <file>           dump the left channel as raw float32 for inspection
 //
-// Usage: pedalboard_render [model.nam] [--drive kind [--sweep]] [--freq hz] [-o out.raw]
+// Usage: pedalboard_render [model.nam] [--fx kind [--sweep]] [--freq hz] [-o out.raw]
 
 #include "NAM/dsp.h"
 #include "NAM/get_dsp.h"
@@ -35,7 +37,13 @@
 #include "effects/eq.h"
 #include "effects/chorus.h"
 #include "effects/delay.h"
+#include "effects/detune.h"
+#include "effects/dimension.h"
+#include "effects/flanger.h"
 #include "effects/hall_reverb.h"
+#include "effects/phaser.h"
+#include "effects/rotary.h"
+#include "effects/uni_vibe.h"
 
 #include <chrono>
 #include <cmath>
@@ -48,12 +56,19 @@
 
 namespace {
 
-std::unique_ptr<Effect> makeDrive(const std::string& kind) {
+std::unique_ptr<Effect> makePedal(const std::string& kind) {
   if (kind == "overdrive")  return std::make_unique<fx::Overdrive>();
   if (kind == "golddrive")  return std::make_unique<fx::GoldDrive>();
   if (kind == "distortion") return std::make_unique<fx::Distortion>();
   if (kind == "fuzz")       return std::make_unique<fx::Fuzz>();
   if (kind == "sustainer")  return std::make_unique<fx::Sustainer>();
+  if (kind == "chorus")     return std::make_unique<fx::Chorus>();
+  if (kind == "phaser")     return std::make_unique<fx::Phaser>();
+  if (kind == "flanger")    return std::make_unique<fx::Flanger>();
+  if (kind == "vibe")       return std::make_unique<fx::UniVibe>();
+  if (kind == "dimension")  return std::make_unique<fx::Dimension>();
+  if (kind == "detune")     return std::make_unique<fx::Detune>();
+  if (kind == "rotary")     return std::make_unique<fx::Rotary>();
   return nullptr;
 }
 
@@ -111,7 +126,8 @@ int main(int argc, char** argv) {
   double freqHz = 0.0;
   bool sweep = false;
   for (int a = 1; a < argc; a++) {
-    if (!std::strcmp(argv[a], "--drive") && a + 1 < argc) driveKind = argv[++a];
+    if ((!std::strcmp(argv[a], "--fx") || !std::strcmp(argv[a], "--drive")) &&
+        a + 1 < argc) driveKind = argv[++a];
     else if (!std::strcmp(argv[a], "--sweep")) sweep = true;
     else if (!std::strcmp(argv[a], "--freq") && a + 1 < argc) freqHz = std::atof(argv[++a]);
     else if (!std::strcmp(argv[a], "-o") && a + 1 < argc) outPath = argv[++a];
@@ -123,10 +139,11 @@ int main(int argc, char** argv) {
   std::unique_ptr<nam::DSP> model;
 
   if (!driveKind.empty()) {
-    // Isolated drive-pedal chain: just the pedal, nothing to launder its output.
-    auto fx = makeDrive(driveKind);
+    // Isolated pedal chain: just the pedal, nothing to launder its output.
+    auto fx = makePedal(driveKind);
     if (!fx) {
-      printf("unknown drive kind '%s' (overdrive|golddrive|distortion|fuzz|sustainer)\n",
+      printf("unknown kind '%s' (overdrive|golddrive|distortion|fuzz|sustainer|"
+             "chorus|phaser|flanger|vibe|dimension|detune|rotary)\n",
              driveKind.c_str());
       return 1;
     }

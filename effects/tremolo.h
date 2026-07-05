@@ -11,6 +11,7 @@
 #include "../effect.h"
 #include "../dsp_util.h"
 #include "../tempo.h"
+#include "mod_dsp.h"
 
 #include <cmath>
 
@@ -44,11 +45,9 @@ public:
     const float depthT = depth_->get() / 100.0f;
     const bool square = shape_->get() > 0.5f;
     // When synced, the LFO period IS one division at the board tempo, so the
-    // rate is its reciprocal (ms -> Hz). Otherwise the manual Rate knob.
-    const float rateHz =
-        sync_->get() > 0.5f
-            ? 1000.0f / tempo::divisionMs((int)div_->get(), tempo::bpm())
-            : rate_->get();
+    // rate is its reciprocal -- md::rateHz, shared with the modulation pedals.
+    const float rateHz = md::rateHz(sync_->get() > 0.5f,
+                                    (int)(div_->get() + 0.5f), rate_->get());
     const float inc = rateHz / (float)sr_;
     const float smooth = square ? 0.02f : 1.0f;  // tame square edges only
 

@@ -8,8 +8,9 @@ custom, better-sounding effects. Tackled incrementally.
 - **Parameter smoothing** (all effects): audible-path gains/mixes/depths are
   one-pole smoothed per sample (`Smoother` in `dsp_util.h`, ~20 ms) so swept
   knobs glide instead of stepping per block. EQ band gains smooth at block
-  rate (~50 ms) since they act through biquad coefficients. Chorus/Phaser/
-  Reverb rely on JUCE's internal smoothing.
+  rate (~50 ms) since they act through biquad coefficients. (Nothing relies
+  on JUCE's internal smoothing anymore -- the last JUCE-wrapped effects,
+  Chorus and Phaser, are hand-rolled as of the modulation collection.)
 - **Click-free bypass**: toggling an effect crossfades dry<->wet over ~10 ms
   (`Effect::run()` in `effect.h`, driven by `chain.h`) instead of hard-
   switching. Footswitches never click.
@@ -106,6 +107,9 @@ custom, better-sounding effects. Tackled incrementally.
     little grain warble and ~20–35 ms wet-only latency. Mode switches fade
     the wet out/in (~8 ms) around an engine reset, so no clicks. (If a third
     consumer of `rv::PitchShift` appears, extract it to a `pitch_dsp.h`.)
+    _Update: it appeared (Detune) -- the shifter now lives in
+    `effects/pitch_dsp.h` as `pit::PitchShift`; consumers are shimmer/octave/
+    detune._
 
 - **Compressor rework** (`comp.h`, was suggestion 1) — `juce::dsp::Compressor`
   (hard-knee, unlinked channels) replaced by a hand-rolled optical-style comp:
@@ -119,6 +123,47 @@ custom, better-sounding effects. Tackled incrementally.
   preset `makeup` values are dropped. GR meter now reports the detector's
   real gain reduction instead of a peak-in/out estimate.
 
+- **Modulation collection** (absorbs suggestions "Phaser: expose stage count/
+  centre" and "Chorus: multi-voice"): the JUCE Chorus/Phaser wrappers are
+  gone; chorus/phaser/flanger rebuilt hand-rolled plus four new pedals, all
+  sharing `effects/mod_dsp.h` (`md::Allpass1` first-order allpass, `ModDelay`
+  modulated tap, `rateHz` sync-or-knob resolver, `tri`/`skewedCos` shapes;
+  the phase-accumulator `Lfo` itself promoted from `delay_dsp.h` to
+  `dsp_util.h` on its second collection of consumers):
+  - **Chorus** (rework, keeps ids; Feedback dropped -- no natural feedback
+    point in a voice bank) — up to 3 voices/side at staggered 5.5/8.5/12 ms
+    bases with phase- and rate-spread LFOs, equal-power Voices switching
+    through smoothed gains, ~8 kHz BBD-dark wet, mid/side Width.
+  - **Phaser** (rework, keeps ids) — 8 always-running `Allpass1` stages/side,
+    wet tap crossfades between stage 4/6/8 (click-free Stages switch),
+    exponential ±1.5-octave sweep around a Centre knob (default 600 Hz = the
+    old fixed voice), feedback ≤0.9 into stage 1 (allpass chain is unity-
+    magnitude, unconditionally stable), Sync/Div beat sync.
+  - **Flanger** (rework, keeps ids; feedback widened bipolar −95..95) —
+    exponential sweep `manual · ratio^lfo` (equal time per comb octave),
+    Manual base-delay knob, ~7 kHz damping in the fed-back branch, soft-
+    limited loop, Sync/Div; **Thru-Zero** puts the dry on its own tap at the
+    sweep's log-midpoint with a smoothed wet polarity flip -- one tape-flange
+    null per cycle, toggle glides instead of clicking.
+  - **Uni-Vibe** (new, `uni_vibe.h`, kind `vibe`) — 4 staggered allpass
+    corners (110/280/700/1800 Hz, the mismatched-caps signature) swept by a
+    shared lamp/LDR LFO (`skewedCos`: fast bloom, slow tail); Voice picks
+    Chorus (50/50) or Vibrato (wet-only) through smoothed gains.
+  - **Dimension** (new, `dimension.h`) — SDD-320-style widener: antiphase-
+    modulated sub-ms taps cross-mixed L/R (`wet_L − 0.7·wet_R`), four preset
+    Mode buttons glided through smoothers, deliberately subtler than Chorus.
+  - **Detune** (new, `detune.h`) — `pit::PitchShift` at ±cents with a 25 ms
+    grain window (warble-free near unity, ~12 ms avg wet latency); Spread
+    on = L down/R up, off = both up (mono-safe).
+  - **Rotary** (new, `rotary.h`) — Leslie: mono-sum → gentle tanh drive →
+    800 Hz complementary crossover → horn (0.8/6.8 Hz) + drum (0.7/5.7 Hz),
+    each one sin/cos pair driving Doppler tap + AM + mic panning; Speed
+    targets chase through rotor-inertia smoothers (horn ~0.8 s, drum ~3.5 s)
+    so the horn audibly arrives first. No cab IR (scope-bound).
+  - Enum-id note: the web `ENUMS` map and device `kEnums` are global by param
+    id, so the new enums use fresh ids (`stages`/`voices`/`voice`/`dmode`/
+    `speed`); device table widened to 4 labels for Dimension.
+
 ## Suggestions (to tackle individually)
 
 ### 2. Smaller polish
@@ -128,15 +173,10 @@ custom, better-sounding effects. Tackled incrementally.
   smoothing coefficient (0.02) is sample-rate dependent.
 - **Swell:** linear attack ramp instead of one-pole (reads more like a real
   volume-pedal swell); onset re-trigger so legato notes can re-swell.
-- **Phaser:** expose stage count / centre frequency instead of fixed 600 Hz.
-- **Chorus:** multi-voice (2–3 per side) if the JUCE one ever feels thin.
 
 ### 3. New effect candidates
 
 - Cab IR loader (fixed-partition convolution) — matters if any NAM captures
   are amp-only with no cab baked in
 - Envelope filter / auto-wah
-- Rotary speaker
 - Clean boost
-- Detune — could reuse `rv::PitchShift` at a near-unity ratio (the octave's
-  Poly mode already covers poly octave shifting)

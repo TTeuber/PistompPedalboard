@@ -28,6 +28,8 @@
 #include "effects/chorus.h"
 #include "effects/comp.h"
 #include "effects/delay.h"
+#include "effects/detune.h"
+#include "effects/dimension.h"
 #include "effects/distortion.h"
 #include "effects/eq.h"
 #include "effects/flanger.h"
@@ -43,12 +45,14 @@
 #include "effects/phaser.h"
 #include "effects/plate_reverb.h"
 #include "effects/reverse_delay.h"
+#include "effects/rotary.h"
 #include "effects/shimmer_reverb.h"
 #include "effects/sustainer.h"
 #include "effects/swell.h"
 #include "effects/tape_echo.h"
 #include "effects/tremolo.h"
 #include "effects/tuner.h"
+#include "effects/uni_vibe.h"
 #include "effects/vibrato.h"
 #include "fx_factory.h"
 #include "manifest.h"
@@ -494,10 +498,14 @@ int main(int argc, char **argv) {
   g_fx.add("fuzz",       "Fuzz",       [] { return std::make_unique<fx::Fuzz>(); });
   g_fx.add("sustainer",  "Sustainer",  [] { return std::make_unique<fx::Sustainer>(); });
   g_fx.add("chorus",     "Chorus",     [] { return std::make_unique<fx::Chorus>(); });
+  g_fx.add("dimension",  "Dimension",  [] { return std::make_unique<fx::Dimension>(); });
+  g_fx.add("detune",     "Detune",     [] { return std::make_unique<fx::Detune>(); });
   g_fx.add("vibrato",    "Vibrato",    [] { return std::make_unique<fx::Vibrato>(); });
   g_fx.add("tremolo",    "Tremolo",    [] { return std::make_unique<fx::Tremolo>(); });
   g_fx.add("phaser",     "Phaser",     [] { return std::make_unique<fx::Phaser>(); });
+  g_fx.add("vibe",       "Uni-Vibe",   [] { return std::make_unique<fx::UniVibe>(); });
   g_fx.add("flanger",    "Flanger",    [] { return std::make_unique<fx::Flanger>(); });
+  g_fx.add("rotary",     "Rotary",     [] { return std::make_unique<fx::Rotary>(); });
   g_fx.add("octave",     "Octave",     [] { return std::make_unique<fx::Octave>(); });
   g_fx.add("swell",      "Auto-Swell", [] { return std::make_unique<fx::Swell>(); });
   g_fx.add("delay",      "Digital",    [] { return std::make_unique<fx::Delay>(); });
@@ -511,7 +519,7 @@ int main(int argc, char **argv) {
   g_fx.add("shimmer",    "Shimmer",    [] { return std::make_unique<fx::Shimmer>(); });
 
   // Pre-fill the first grid slots with a curated default chain (NOT every kind,
-  // which would overflow the 8-slot grid now that there are 11). The user can
+  // which would overflow the 8-slot grid many times over). The user can
   // add/remove/reorder from there.
   const char* kDefaultChain[] = {"overdrive", "chorus", "delay", "hall"};
   for (int slot = 0; slot < (int)(sizeof(kDefaultChain) / sizeof(char*)); slot++)

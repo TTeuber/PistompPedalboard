@@ -1,9 +1,10 @@
 // dsp_util.h -- tiny real-time DSP helpers for the hand-written effects.
 //
-// The shared primitives: an RBJ biquad, a one-pole parameter smoother, and a
-// one-pole lowpass. All streaming, allocation-free, and safe to call on the
-// audio thread. (Drive-specific blocks live in effects/drive_dsp.h, reverb
-// blocks in effects/reverb_dsp.h.)
+// The shared primitives: an RBJ biquad, a one-pole parameter smoother, a
+// phase-accumulator LFO, and a one-pole lowpass. All streaming, allocation-
+// free, and safe to call on the audio thread. (Collection-specific blocks
+// live in effects/drive_dsp.h, delay_dsp.h, reverb_dsp.h, mod_dsp.h,
+// pitch_dsp.h.)
 
 #pragma once
 
@@ -99,6 +100,29 @@ struct Smoother {
   float next(float target) noexcept {
     y = target + a * (y - target);
     return y;
+  }
+};
+
+// Phase-accumulator LFO -- the hand-rolled idiom shared by the delay and
+// modulation collections (promoted from delay_dsp.h on its third consumer).
+// next() returns the phase in [0,1); shape it with sine()/raisedCos().
+// setPhase() offsets L/R instances so channels decorrelate.
+struct Lfo {
+  float phase = 0.0f, inc = 0.0f;
+
+  void setRate(float hz, double fs) noexcept { inc = float(hz / fs); }
+  void setPhase(float p) noexcept { phase = p - std::floor(p); }
+  float next() noexcept {
+    const float p = phase;
+    phase += inc;
+    if (phase >= 1.0f) phase -= 1.0f;
+    return p;
+  }
+  static float sine(float p) noexcept {
+    return std::sin(2.0f * (float)M_PI * p);
+  }
+  static float raisedCos(float p) noexcept {
+    return 0.5f * (1.0f - std::cos(2.0f * (float)M_PI * p));
   }
 };
 
