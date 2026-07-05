@@ -25,6 +25,7 @@
 #include "lvgl.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -80,7 +81,9 @@ private:
     lv_obj_t* obj = nullptr;   // focusable container (highlight target)
     lv_obj_t* lbl = nullptr;   // inner label, for dynamic text updates
     Action action = ActNone;
-    Effect* fx = nullptr;
+    // shared_ptr: keeps the pedal alive even if the web thread removes it from
+    // the grid while this page still references it (stale but never dangling).
+    std::shared_ptr<Effect> fx;
     int idx = 0;               // rig index / param-bank payload / param index
     // Extra widgets for the Input/Output param cells, kept for per-frame refresh
     // (trailing so the common 5-field aggregate inits elsewhere still compile):
@@ -92,7 +95,7 @@ private:
   };
 
   // --- navigation ---
-  void goTo(Page p, Effect* fx = nullptr);
+  void goTo(Page p, std::shared_ptr<Effect> fx = nullptr);
   void rebuild();              // build widgets for page_
   void moveFocus(int dir);
   void applyFocus();
@@ -107,7 +110,8 @@ private:
   // --- builders ---
   lv_obj_t* newScreen();
   void topBar(lv_obj_t* scr, const char* title);   // adds Back as item 0
-  lv_obj_t* addRow(lv_obj_t* scr, int rowIndex, Action a, Effect* fx, int idx);
+  lv_obj_t* addRow(lv_obj_t* scr, int rowIndex, Action a,
+                   const std::shared_ptr<Effect>& fx, int idx);
   void buildHome();           // combined: section buttons + live FX grid + actions
 
   // --- Input / Output combined pages (single nav-encoder editing) ------------
@@ -120,8 +124,8 @@ private:
   lv_color_t knobColorFor(const Effect* fx) const;   // web KNOB_COLORS by kind
   lv_obj_t* groupBox(lv_obj_t* scr, int x0, int y0, int x1, int y1, const char* title);
   void paramCell(lv_obj_t* scr, int x, int y, int w, int h,
-                 Effect* fx, int paramIdx, lv_color_t col);
-  void switchCell(lv_obj_t* scr, int x, int y, Effect* fx);
+                 const std::shared_ptr<Effect>& fx, int paramIdx, lv_color_t col);
+  void switchCell(lv_obj_t* scr, int x, int y, const std::shared_ptr<Effect>& fx);
   lv_obj_t* meterBar(lv_obj_t* scr, int x, int y, int w, const char* label,
                      lv_obj_t** outVal, bool fromEnd = false);
   void ioSelect();             // nav click on Input/Output: edit param / flip switch
@@ -141,7 +145,7 @@ private:
   // --- char-picker (on-device text entry; no keyboard) ---
   void buildNameEntry();
   void beginName(NameOp op, const std::string& initial, Page returnTo,
-                 Effect* fx = nullptr, std::string orig = "");
+                 std::shared_ptr<Effect> fx = nullptr, std::string orig = "");
   void nameTurn(int dir);     // dial the character under the caret
   void nameAdvance();         // accept + move caret right (append slot at end)
   void nameBackspace();       // delete char before caret (cancel if empty)
@@ -183,7 +187,7 @@ private:
   std::vector<FocusItem> items_;
   int focus_ = 0;
 
-  Effect* current_ = nullptr;   // effect on the PedalControl page
+  std::shared_ptr<Effect> current_;  // effect on the PedalControl page
   int paramBase_ = 0;           // knob bank offset when an effect has > 3 params
   int pickerSlot_ = -1;         // grid slot the FxPicker is filling
   std::vector<std::string> rigNames_;   // backs the Menu's "Rig: <name>" rows
@@ -193,7 +197,7 @@ private:
   std::string nameBuf_;         // the string being typed
   int nameCursor_ = 0;          // caret position (0..len; len == append slot)
   std::string nameOrig_;        // original name (rename ops)
-  Effect* nameFx_ = nullptr;    // target effect (preset ops)
+  std::shared_ptr<Effect> nameFx_;   // target effect (preset ops)
   Page nameReturn_ = Home;      // page to return to on commit/cancel
 
   // rig state

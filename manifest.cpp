@@ -3,6 +3,7 @@
 #include "manifest.h"
 
 #include "meta.h"
+#include "store_util.h"
 
 #include <json.hpp>
 
@@ -34,10 +35,7 @@ bool readJson(const fs::path& p, json& out) {
 }
 
 bool writeJson(const fs::path& p, const json& doc) {
-  std::ofstream out(p);
-  if (!out) return false;
-  out << doc.dump(2);
-  return true;
+  return store::writeFileAtomic(p, doc.dump(2));
 }
 
 // Path relative to the library base, forward slashes (stable across platforms).

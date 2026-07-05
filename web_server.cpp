@@ -75,7 +75,7 @@ json fullState(const Chain& chain, const PedalControls& ctl,
     e["name"] = fx->name();
     e["enabled"] = fx->enabled.load();
     e["section"] = sectionName(fx->section);
-    e["slot"] = chain.fxSlotOf(fx);        // -1 unless it lives in the FX grid
+    e["slot"] = chain.fxSlotOf(fx.get());  // -1 unless it lives in the FX grid
     e["fsAssign"] = fx->fsAssign.load();   // -1 = unassigned, else 0..3
     e["fsMode"] = fx->fsMode.load();       // 0 normal, 1 inverted
     json params = json::array();
@@ -157,8 +157,8 @@ void WebServer::setupRoutes() {
     float outL  = ctl_.outPeak[0].exchange(0.0f);
     float outR  = ctl_.outPeak[1].exchange(0.0f);
     float gr = 0.0f;
-    if (auto* g = dynamic_cast<fx::Gate*>(chain_.find("gate"))) gr += g->takeGrDb();
-    if (auto* c = dynamic_cast<fx::Comp*>(chain_.find("comp"))) gr += c->takeGrDb();
+    if (auto g = std::dynamic_pointer_cast<fx::Gate>(chain_.find("gate"))) gr += g->takeGrDb();
+    if (auto c = std::dynamic_pointer_cast<fx::Comp>(chain_.find("comp"))) gr += c->takeGrDb();
     json m = {{"inputDb", dbfs(inPk)},
               {"outputDbL", dbfs(outL)}, {"outputDbR", dbfs(outR)}, {"grDb", gr}};
     res.set_content(m.dump(), "application/json");
@@ -168,7 +168,7 @@ void WebServer::setupRoutes() {
   // atomics (the UI loop pumps analyze()); the web tuner modal polls this a few
   // times a second while open. note = 0..11 (C..B), -1 = no confident pitch.
   svr_->Get("/api/tuner", [this](const httplib::Request&, httplib::Response& res) {
-    auto* t = static_cast<fx::Tuner*>(chain_.find("tuner"));
+    auto t = std::static_pointer_cast<fx::Tuner>(chain_.find("tuner"));
     json j = t ? json{{"engaged", t->engaged()}, {"note", t->noteIndex()},
                       {"octave", t->octave()}, {"cents", t->cents()}, {"freq", t->freqHz()}}
                : json{{"engaged", false}, {"note", -1}, {"octave", 0}, {"cents", 0.0}, {"freq", 0.0}};
@@ -179,7 +179,7 @@ void WebServer::setupRoutes() {
   svr_->Post("/api/param", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
-    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    auto fx = chain_.find(b.value("effect", std::string{}));
     Param* p = fx ? fx->param(b.value("param", std::string{})) : nullptr;
     if (!p || !b.contains("value")) { res.status = 404; return; }
     p->set((float)b["value"].get<double>());
@@ -190,7 +190,7 @@ void WebServer::setupRoutes() {
   svr_->Post("/api/enabled", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
-    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    auto fx = chain_.find(b.value("effect", std::string{}));
     if (!fx) { res.status = 404; return; }
     fx->enabled.store(b.value("enabled", true));
     ok(res);
@@ -247,7 +247,7 @@ void WebServer::setupRoutes() {
     chain_.fxPlace(slot, std::move(fx));
     std::string preset = b.value("preset", std::string{});
     if (!preset.empty())
-      if (Effect* placed = chain_.fxAt(slot))
+      if (auto placed = chain_.fxAt(slot))
         presets::load(presetDir_, fxBaseKind(placed->type_id()), preset, *placed);
     res.set_content(fullState(chain_, ctl_, factory_).dump(), "application/json");
   });
@@ -293,7 +293,7 @@ void WebServer::setupRoutes() {
   svr_->Post("/api/assign", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
-    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    auto fx = chain_.find(b.value("effect", std::string{}));
     if (!fx) { res.status = 404; return; }
     int fs = b.value("fs", -1);
     int mode = b.value("mode", 0);
@@ -439,7 +439,7 @@ void WebServer::setupRoutes() {
   svr_->Get("/api/pedal-presets", [this](const httplib::Request& req, httplib::Response& res) {
     std::string kind = req.get_param_value("kind");
     if (kind.empty()) {
-      Effect* fx = chain_.find(req.get_param_value("effect"));
+      auto fx = chain_.find(req.get_param_value("effect"));
       if (!fx) { res.status = 404; return; }
       kind = fxBaseKind(fx->type_id());
     }
@@ -451,7 +451,7 @@ void WebServer::setupRoutes() {
   svr_->Post("/api/pedal-preset/load", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
-    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    auto fx = chain_.find(b.value("effect", std::string{}));
     std::string name = b.value("name", std::string{});
     if (!fx || name.empty() ||
         !presets::load(presetDir_, fxBaseKind(fx->type_id()), name, *fx)) {
@@ -466,7 +466,7 @@ void WebServer::setupRoutes() {
   svr_->Post("/api/pedal-preset/save", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
-    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    auto fx = chain_.find(b.value("effect", std::string{}));
     std::string name = b.value("name", std::string{});
     std::string kind = fx ? fxBaseKind(fx->type_id()) : std::string{};
     if (!fx || name.empty() || !presets::save(presetDir_, kind, name, *fx)) {
@@ -484,7 +484,7 @@ void WebServer::setupRoutes() {
   svr_->Post("/api/pedal-preset/delete", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
-    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    auto fx = chain_.find(b.value("effect", std::string{}));
     std::string name = b.value("name", std::string{});
     if (!fx || name.empty()) { res.status = 400; return; }
     std::string kind = fxBaseKind(fx->type_id());
@@ -499,7 +499,7 @@ void WebServer::setupRoutes() {
   svr_->Post("/api/pedal-preset/rename", [this](const httplib::Request& req, httplib::Response& res) {
     json b;
     if (!parseBody(req, res, b)) return;
-    Effect* fx = chain_.find(b.value("effect", std::string{}));
+    auto fx = chain_.find(b.value("effect", std::string{}));
     std::string from = b.value("from", std::string{});
     std::string to = b.value("to", std::string{});
     std::string kind = fx ? fxBaseKind(fx->type_id()) : std::string{};

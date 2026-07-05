@@ -144,6 +144,19 @@ static float g_R[MAX_FRAMES];
 // in/output-trim smoothing in effects/{input,output}_gain.h.
 static float g_master = 1.0f;
 
+// Soft output ceiling, the last thing before the DAC: unity below the knee
+// (-6 dBFS), then a tanh curve that approaches 0 dBFS asymptotically. Normal
+// levels pass bit-exact; a runaway patch (feedback loop, hot rig) lands at the
+// PA as a saturated signal instead of full-scale digital garbage. C1-continuous
+// at the knee (tanh'(0) = 1), so nothing audible happens at the seam.
+static inline float softCeiling(float x) noexcept {
+  constexpr float kKnee = 0.5f;   // -6 dBFS
+  float a = x < 0 ? -x : x;
+  if (a <= kKnee) return x;
+  float y = kKnee + (1.0f - kKnee) * std::tanh((a - kKnee) / (1.0f - kKnee));
+  return x < 0 ? -y : y;
+}
+
 static void on_sigint(int) { g_ctl.running.store(false); }
 
 // ---------------- THE INPUT DOMAIN (~1 kHz) ----------------
@@ -369,8 +382,8 @@ static pistomp::AudioCallback makeAudioCallback(double budget_s) {
     float opk[2] = {0.0f, 0.0f};
     for (int f = 0; f < n; f++) {
       g_master = mCoef * g_master + (1.0f - mCoef) * master;
-      out[0][f] = g_L[f] * g_master;
-      out[1][f] = g_R[f] * g_master;
+      out[0][f] = softCeiling(g_L[f] * g_master);
+      out[1][f] = softCeiling(g_R[f] * g_master);
       float o0 = out[0][f];
       if (o0 < 0)
         o0 = -o0;
@@ -382,7 +395,8 @@ static pistomp::AudioCallback makeAudioCallback(double budget_s) {
       if (o1 > opk[1])
         opk[1] = o1;
     }
-    // Output level peak-hold for the web meter, post-master. UI reads-and-clears.
+    // Output level peak-hold for the web meter, post-master + ceiling (what
+    // actually leaves the box). UI reads-and-clears.
     for (int c = 0; c < 2; c++) {
       float cur = g_ctl.outPeak[c].load(std::memory_order_relaxed);
       while (opk[c] > cur && !g_ctl.outPeak[c].compare_exchange_weak(

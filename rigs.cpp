@@ -8,6 +8,7 @@
 #include "fx_factory.h"
 #include "fx_id.h"
 #include "meta.h"
+#include "store_util.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -73,7 +74,7 @@ void apply(const nlohmann::json& doc, Chain& chain, PedalControls& ctl,
       if (kind.empty()) kind = fxBaseKind(id);
       // Leave the slot alone if it already holds the right instance (avoids
       // tearing down the default grid when loading a matching preset).
-      Effect* cur = chain.fxAt(slot);
+      std::shared_ptr<Effect> cur = chain.fxAt(slot);
       if (cur && cur->type_id() == id) continue;
       if (auto fx = factory.createRestored(kind, id))
         chain.fxPlace(slot, std::move(fx));
@@ -84,7 +85,7 @@ void apply(const nlohmann::json& doc, Chain& chain, PedalControls& ctl,
 
   if (!doc.contains("effects") || !doc["effects"].is_object()) return;
   for (auto it = doc["effects"].begin(); it != doc["effects"].end(); ++it) {
-    Effect* fx = chain.find(it.key());
+    std::shared_ptr<Effect> fx = chain.find(it.key());
     if (!fx) continue;
     const json& e = it.value();
     if (e.contains("enabled") && e["enabled"].is_boolean())
@@ -116,6 +117,7 @@ std::vector<std::string> list(const std::string& dir) {
 
 bool load(const std::string& dir, const std::string& name, Chain& chain,
           PedalControls& ctl, FxFactory& factory) {
+  if (!store::validName(name)) return false;
   std::ifstream in(fs::path(dir) / (name + ".json"));
   if (!in) return false;
   json doc;
@@ -130,6 +132,7 @@ bool load(const std::string& dir, const std::string& name, Chain& chain,
 
 bool save(const std::string& dir, const std::string& name, Chain& chain,
           PedalControls& ctl, std::string* idOut) {
+  if (!store::validName(name)) return false;
   std::error_code ec;
   fs::create_directories(dir, ec);
   fs::path path = fs::path(dir) / (name + ".json");
@@ -149,20 +152,18 @@ bool save(const std::string& dir, const std::string& name, Chain& chain,
   meta::stamp(doc, content, 2);
   if (idOut) *idOut = doc.value("id", std::string{});
 
-  std::ofstream out(path);
-  if (!out) return false;
-  out << doc.dump(2);
-  return true;
+  return store::writeFileAtomic(path, doc.dump(2));
 }
 
 bool remove(const std::string& dir, const std::string& name) {
+  if (!store::validName(name)) return false;
   std::error_code ec;
   return fs::remove(fs::path(dir) / (name + ".json"), ec);
 }
 
 bool rename(const std::string& dir, const std::string& from,
             const std::string& to) {
-  if (from.empty() || to.empty()) return false;
+  if (!store::validName(from) || !store::validName(to)) return false;
   if (from == to) return true;
   fs::path src = fs::path(dir) / (from + ".json");
   fs::path dst = fs::path(dir) / (to + ".json");
@@ -176,7 +177,7 @@ bool rename(const std::string& dir, const std::string& from,
   { std::ifstream in(src); if (!in) return false;
     try { in >> doc; } catch (...) { return false; } }
   doc["name"] = to;
-  { std::ofstream out(dst); if (!out) return false; out << doc.dump(2); }
+  if (!store::writeFileAtomic(dst, doc.dump(2))) return false;
   fs::remove(src, ec);
   return true;
 }

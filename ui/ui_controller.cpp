@@ -164,9 +164,9 @@ void UiController::begin() { goTo(Home); }
 
 // ---------------- navigation ----------------
 
-void UiController::goTo(Page p, Effect* fx) {
+void UiController::goTo(Page p, std::shared_ptr<Effect> fx) {
   page_ = p;
-  if (p == PedalControl) current_ = fx;
+  if (p == PedalControl) current_ = std::move(fx);
   rebuild();
 }
 
@@ -242,7 +242,7 @@ void UiController::select() {
       goTo(Home);
       break;
     case ActRemoveFx: {
-      int slot = current_ ? chain_.fxSlotOf(current_) : -1;
+      int slot = current_ ? chain_.fxSlotOf(current_.get()) : -1;
       if (slot >= 0) chain_.fxRemove(slot);
       goTo(Home);
       break;
@@ -390,7 +390,7 @@ void UiController::onKnob(int which, int dir) {
   }
   if (page_ == PedalControl && current_) {
     int pi = paramBase_ + which;
-    if (pi < (int)current_->params.size()) { stepParam(current_, pi, dir); return; }
+    if (pi < (int)current_->params.size()) { stepParam(current_.get(), pi, dir); return; }
   }
   if (page_ == MasterControl) { adjustMaster(dir); return; }
   if (which == 2) adjustMaster(dir);   // Enc3 = master everywhere else (and as fallback)
@@ -444,7 +444,8 @@ void UiController::topBar(lv_obj_t* scr, const char* title) {
   lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 8);
 }
 
-lv_obj_t* UiController::addRow(lv_obj_t* scr, int rowIndex, Action a, Effect* fx, int idx) {
+lv_obj_t* UiController::addRow(lv_obj_t* scr, int rowIndex, Action a,
+                               const std::shared_ptr<Effect>& fx, int idx) {
   lv_obj_t* o = mkContainer(scr, kRowW, kRowH);
   lv_obj_align(o, LV_ALIGN_TOP_LEFT, kRowX, kRowY0 + rowIndex * kRowStep);
   lv_obj_t* l = lv_label_create(o);
@@ -515,10 +516,10 @@ void UiController::buildHome() {
     lv_obj_set_width(l, xb[c + 1] - xb[c] - 8);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(l, LV_ALIGN_CENTER, 0, -4);
-    if (Effect* fx = chain_.fxAt(slot)) {
+    if (auto fx = chain_.fxAt(slot)) {
       lv_label_set_text(l, fx->name().c_str());
       lv_obj_set_style_text_color(l, fx->enabled.load() ? kText : kMuted, 0);
-      tileBinding(o, fx);
+      tileBinding(o, fx.get());
       items_.push_back({o, l, ActOpenEffect, fx, slot});
     } else {
       lv_label_set_text(l, "+");
@@ -616,7 +617,8 @@ lv_obj_t* UiController::groupBox(lv_obj_t* scr, int x0, int y0, int x1, int y1,
 // its border only lights up under the nav cursor (applyFocus). Registered as an
 // ActEditParam focus item carrying the effect + param index.
 void UiController::paramCell(lv_obj_t* scr, int x, int y, int w, int h,
-                             Effect* fx, int paramIdx, lv_color_t col) {
+                             const std::shared_ptr<Effect>& fx, int paramIdx,
+                             lv_color_t col) {
   Param* p = fx->params[(size_t)paramIdx].get();
 
   lv_obj_t* cell = lv_obj_create(scr);
@@ -656,7 +658,8 @@ void UiController::paramCell(lv_obj_t* scr, int x, int y, int w, int h,
 // track with a handle that rests left (off, grey) and slides right + lights gold
 // when on. The track is the focus target; clicking it flips fx->enabled. The
 // handle position/colour is refreshed each frame from the live enabled flag.
-void UiController::switchCell(lv_obj_t* scr, int x, int y, Effect* fx) {
+void UiController::switchCell(lv_obj_t* scr, int x, int y,
+                              const std::shared_ptr<Effect>& fx) {
   const int tw = 38, th = 20;
   lv_obj_t* track = lv_obj_create(scr);
   lv_obj_set_size(track, tw, th);
@@ -723,9 +726,9 @@ lv_obj_t* UiController::meterBar(lv_obj_t* scr, int x, int y, int w,
 // web UI's whole input section. One nav encoder edits everything (see ioSelect).
 void UiController::buildInputPage() {
   lv_obj_t* scr = newScreen();
-  Effect* inGain = chain_.find("input");
-  Effect* gate   = chain_.find("gate");
-  Effect* comp   = chain_.find("comp");
+  auto inGain = chain_.find("input");
+  auto gate   = chain_.find("gate");
+  auto comp   = chain_.find("comp");
   const int CW = 80, CH = 52;   // knob-cell size (wide enough that "Threshold" fits)
 
   // Section boxes: flat, edge-to-edge, borders merged at shared boundaries.
@@ -736,17 +739,17 @@ void UiController::buildInputPage() {
   groupBox(scr, 0, 200, 319, 239, nullptr);   // gain-reduction meter
 
   // Band 1: Input gain | Noise Gate (Threshold, Release) + enable switch.
-  if (inGain) paramCell(scr, 7, 24, CW, CH, inGain, 0, knobColorFor(inGain));
+  if (inGain) paramCell(scr, 7, 24, CW, CH, inGain, 0, knobColorFor(inGain.get()));
   if (gate) {
     switchCell(scr, 277, 6, gate);
-    paramCell(scr, 108, 24, CW, CH, gate, 0, knobColorFor(gate));   // Threshold
-    paramCell(scr, 196, 24, CW, CH, gate, 1, knobColorFor(gate));   // Release
+    paramCell(scr, 108, 24, CW, CH, gate, 0, knobColorFor(gate.get()));   // Threshold
+    paramCell(scr, 196, 24, CW, CH, gate, 1, knobColorFor(gate.get()));   // Release
   }
 
   // Band 2: Compressor (Threshold, Ratio, Blend) + enable switch.
   if (comp) {
     switchCell(scr, 277, 86, comp);
-    lv_color_t cc = knobColorFor(comp);
+    lv_color_t cc = knobColorFor(comp.get());
     paramCell(scr, 16, 104, CW, CH, comp, 0, cc);    // Threshold
     paramCell(scr, 120, 104, CW, CH, comp, 1, cc);   // Ratio
     paramCell(scr, 224, 104, CW, CH, comp, 2, cc);   // Blend
@@ -781,9 +784,9 @@ void UiController::buildInputPage() {
 // section. Same one-encoder editing as the Input page.
 void UiController::buildOutputPage() {
   lv_obj_t* scr = newScreen();
-  Effect* amp = chain_.find("amp");
-  Effect* eq  = chain_.find("eq");
-  Effect* out = chain_.find("output");
+  auto amp = chain_.find("amp");
+  auto eq  = chain_.find("eq");
+  auto out = chain_.find("output");
   const int CW = 80, CH = 52;
 
   // Section boxes: flat, edge-to-edge, borders merged at shared boundaries.
@@ -796,7 +799,7 @@ void UiController::buildOutputPage() {
   // Band 1: EQ (Low / Mid / High) across the top + enable switch.
   if (eq) {
     switchCell(scr, 277, 6, eq);
-    lv_color_t ec = knobColorFor(eq);
+    lv_color_t ec = knobColorFor(eq.get());
     paramCell(scr, 16, 24, CW, CH, eq, 0, ec);    // Low
     paramCell(scr, 120, 24, CW, CH, eq, 1, ec);   // Mid
     paramCell(scr, 224, 24, CW, CH, eq, 2, ec);   // High
@@ -805,11 +808,11 @@ void UiController::buildOutputPage() {
   // Band 2: Amp (Input / Output) + enable switch | Output gain.
   if (amp) {
     switchCell(scr, 170, 86, amp);
-    lv_color_t ac = knobColorFor(amp);
+    lv_color_t ac = knobColorFor(amp.get());
     paramCell(scr, 10, 104, CW, CH, amp, 0, ac);    // Input (drive)
     paramCell(scr, 92, 104, CW, CH, amp, 1, ac);    // Output (level)
   }
-  if (out) paramCell(scr, 226, 104, CW, CH, out, 0, knobColorFor(out));
+  if (out) paramCell(scr, 226, 104, CW, CH, out, 0, knobColorFor(out.get()));
 
   // Band 3: Output L over R level meters, stacked full-width.
   outLBar_ = meterBar(scr, 9, 168, 300, "Output L", &outLVal_);
@@ -836,7 +839,7 @@ void UiController::ioSelect() {
 void UiController::editFocusedParam(int dir) {
   if (focus_ < 0 || focus_ >= (int)items_.size()) return;
   FocusItem& it = items_[(size_t)focus_];
-  if (it.action == ActEditParam && it.fx) stepParam(it.fx, it.idx, dir);
+  if (it.action == ActEditParam && it.fx) stepParam(it.fx.get(), it.idx, dir);
 }
 
 // Per-frame refresh for the Input/Output pages: live knob fills, the name<->value
@@ -885,7 +888,7 @@ void UiController::refreshIoPage() {
     lv_obj_set_style_bg_color(inLvlBar_, dbColor(inMeterDb_), LV_PART_INDICATOR);
     setDbText(inLvlVal_, inMeterDb_);
     // Gate/comp threshold markers track the live knob values on the -60..0 scale.
-    auto markAt = [&](lv_obj_t* m, Effect* fx) {
+    auto markAt = [&](lv_obj_t* m, const std::shared_ptr<Effect>& fx) {
       if (!m || !fx) return;
       Param* p = fx->param("threshold");
       if (!p) return;
@@ -897,8 +900,8 @@ void UiController::refreshIoPage() {
   }
   if (inGrBar_) {
     float gr = 0.0f;
-    if (auto* g = dynamic_cast<fx::Gate*>(chain_.find("gate"))) gr += g->takeGrDbDev();
-    if (auto* c = dynamic_cast<fx::Comp*>(chain_.find("comp"))) gr += c->takeGrDbDev();
+    if (auto g = std::dynamic_pointer_cast<fx::Gate>(chain_.find("gate"))) gr += g->takeGrDbDev();
+    if (auto c = std::dynamic_pointer_cast<fx::Comp>(chain_.find("comp"))) gr += c->takeGrDbDev();
     int pct = (int)std::clamp(lroundf(gr / 20.0f * 1000.0f), 0L, 1000L);  // 0..20 dB scale
     lv_bar_set_value(inGrBar_, 1000, LV_ANIM_OFF);            // fill eats in from the right
     lv_bar_set_start_value(inGrBar_, 1000 - pct, LV_ANIM_OFF);
@@ -961,11 +964,11 @@ void UiController::buildAssign() {
     lv_obj_set_width(l, tileW - 8);
     lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(l, LV_ALIGN_CENTER, 0, -6);
-    Effect* fx = chain_.fxAt(slot);
+    auto fx = chain_.fxAt(slot);
     if (fx) {
       lv_label_set_text(l, fx->name().c_str());
       lv_obj_set_style_text_color(l, kText, 0);
-      tileBinding(o, fx);
+      tileBinding(o, fx.get());
     } else {
       lv_label_set_text(l, "-");
       lv_obj_set_style_text_color(l, kFaint, 0);
@@ -1024,7 +1027,7 @@ void UiController::buildPedalControl() {
   // FX-grid pedals can be taken out of the chain from here. Kept at the bottom-
   // left; the param-bank button (added below) sits bottom-right so they don't
   // touch. (An effect lives in an FX slot iff it's currently placed in one.)
-  if (chain_.fxSlotOf(current_) >= 0) {
+  if (chain_.fxSlotOf(current_.get()) >= 0) {
     lv_obj_t* o = mkContainer(scr, 96, 24);
     lv_obj_align(o, LV_ALIGN_BOTTOM_LEFT, 6, -8);
     lv_obj_t* l = lv_label_create(o);
@@ -1134,13 +1137,13 @@ void UiController::buildTuner() {
 // Open the char-picker for `op`, seeded with `initial`, returning to `returnTo`
 // on commit/cancel. `fx`/`orig` carry context for preset and rename ops.
 void UiController::beginName(NameOp op, const std::string& initial, Page returnTo,
-                            Effect* fx, std::string orig) {
+                            std::shared_ptr<Effect> fx, std::string orig) {
   nameOp_ = op;
   nameBuf_ = initial;
   if ((int)nameBuf_.size() > kNameMax) nameBuf_.resize(kNameMax);
   nameCursor_ = (int)nameBuf_.size();   // caret at the append slot
   nameReturn_ = returnTo;
-  nameFx_ = fx;
+  nameFx_ = std::move(fx);
   nameOrig_ = std::move(orig);
   goTo(NameEntryPage);
 }
@@ -1592,7 +1595,7 @@ void UiController::onFootswitch(int fs) {
   if (page_ == AssignPage) {
     if (focus_ >= 0 && focus_ < (int)items_.size() && items_[(size_t)focus_].fx) {
       int slot = items_[(size_t)focus_].idx;
-      cycleAssign(items_[(size_t)focus_].fx, fs);
+      cycleAssign(items_[(size_t)focus_].fx.get(), fs);
       rebuild();                       // refresh the tile's color/chip
       for (int i = 0; i < (int)items_.size(); i++)
         if (items_[(size_t)i].idx == slot && items_[(size_t)i].fx) { focus_ = i; break; }

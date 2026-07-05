@@ -4,6 +4,7 @@
 
 #include "effect.h"
 #include "meta.h"
+#include "store_util.h"
 
 #include <json.hpp>
 
@@ -18,6 +19,7 @@ namespace presets {
 
 std::vector<std::string> list(const std::string& dir, const std::string& kind) {
   std::vector<std::string> names;
+  if (!store::validName(kind)) return names;
   std::error_code ec;
   fs::path d = fs::path(dir) / kind;
   if (!fs::is_directory(d, ec)) return names;
@@ -31,6 +33,7 @@ std::vector<std::string> list(const std::string& dir, const std::string& kind) {
 
 bool load(const std::string& dir, const std::string& kind,
           const std::string& name, Effect& fx) {
+  if (!store::validName(kind) || !store::validName(name)) return false;
   std::ifstream in(fs::path(dir) / kind / (name + ".json"));
   if (!in) return false;
   json doc;
@@ -51,6 +54,7 @@ bool load(const std::string& dir, const std::string& kind,
 
 bool save(const std::string& dir, const std::string& kind,
           const std::string& name, const Effect& fx) {
+  if (!store::validName(kind) || !store::validName(name)) return false;
   std::error_code ec;
   fs::path d = fs::path(dir) / kind;
   fs::create_directories(d, ec);
@@ -74,21 +78,21 @@ bool save(const std::string& dir, const std::string& kind,
   doc["name"] = name;
   meta::stamp(doc, content, 2);
 
-  std::ofstream out(path);
-  if (!out) return false;
-  out << doc.dump(2);
-  return true;
+  return store::writeFileAtomic(path, doc.dump(2));
 }
 
 bool remove(const std::string& dir, const std::string& kind,
             const std::string& name) {
+  if (!store::validName(kind) || !store::validName(name)) return false;
   std::error_code ec;
   return fs::remove(fs::path(dir) / kind / (name + ".json"), ec);
 }
 
 bool rename(const std::string& dir, const std::string& kind,
             const std::string& from, const std::string& to) {
-  if (from.empty() || to.empty()) return false;
+  if (!store::validName(kind) || !store::validName(from) ||
+      !store::validName(to))
+    return false;
   if (from == to) return true;
   fs::path d = fs::path(dir) / kind;
   fs::path src = d / (from + ".json");
@@ -102,7 +106,7 @@ bool rename(const std::string& dir, const std::string& kind,
   { std::ifstream in(src); if (!in) return false;
     try { in >> doc; } catch (...) { return false; } }
   doc["name"] = to;
-  { std::ofstream out(dst); if (!out) return false; out << doc.dump(2); }
+  if (!store::writeFileAtomic(dst, doc.dump(2))) return false;
   fs::remove(src, ec);
   return true;
 }

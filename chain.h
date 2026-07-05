@@ -12,22 +12,31 @@
 // fxPlaceInitial(), then added/removed/moved at runtime. Signal flows through
 // the occupied slots in slot-index order; empty slots are skipped.
 //
-// Real-time reorder (RCU-lite): the audio thread reaches the active FX list
-// through a single std::atomic<const FxOrder*>. The UI thread edits by building
-// a NEW FxOrder snapshot and atomically publishing it, so the audio thread
-// never sees a half-built order. Anything unpublished by an edit (the previous
-// order, plus any effect removed/replaced) is retired and freed on the NEXT
-// edit -- safe because edits are human-paced (seconds) while the audio thread
-// re-reads the pointer every block (~1.3 ms), so retired objects are provably
-// unreferenced long before they're freed. No alloc/free ever happens on the
-// audio thread.
+// Real-time reorder (RCU with an epoch grace period): the audio thread reaches
+// the active FX list through a single std::atomic<const FxOrder*>. The UI/web
+// threads edit by building a NEW FxOrder snapshot and atomically publishing it,
+// so the audio thread never sees a half-built order. Reclamation is driven by
+// a block counter the audio thread bumps at the end of every process() call:
+// anything unpublished by an edit (the previous order, plus any effect
+// removed/replaced) is retired stamped "safe at epoch e+2" and freed only once
+// the counter has actually advanced past that -- so even a BURST of edits
+// (a rig load replacing all 8 slots back-to-back) can never free an order or
+// effect the in-flight audio block is still reading. No alloc/free ever
+// happens on the audio thread.
+//
+// Effect lifetime beyond the audio thread: grid instances are held by
+// shared_ptr, and find()/fxAt()/effects() hand out shared_ptr references. A
+// web handler or UI page that is still looking at a pedal when another thread
+// removes it keeps the object alive (stale but valid) instead of dangling.
 
 #pragma once
 
 #include "effect.h"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -45,16 +54,17 @@ public:
   static constexpr int kFxSlots = 8;   // 4x2 grid
 
   // Append a prefix/suffix singleton (transfers ownership). Returns a borrowed
-  // pointer so the caller can set its Section and wire presets/UI to it.
+  // pointer so the caller can set its Section and wire presets/UI to it --
+  // safe to keep raw because singletons live as long as the chain.
   Effect* add(std::unique_ptr<Effect> fx) {
-    effects_.push_back(std::move(fx));
+    effects_.push_back(std::shared_ptr<Effect>(std::move(fx)));
     return effects_.back().get();
   }
 
   // Pre-place an FX instance into a grid slot at BUILD time (before prepare/RT).
   Effect* fxPlaceInitial(int slot, std::unique_ptr<Effect> fx) {
     if (slot < 0 || slot >= kFxSlots) return nullptr;
-    fxSlots_[(size_t)slot] = std::move(fx);
+    fxSlots_[(size_t)slot] = std::shared_ptr<Effect>(std::move(fx));
     return fxSlots_[(size_t)slot].get();
   }
 
@@ -71,9 +81,16 @@ public:
   }
 
   // Size every effect's buffers before going real-time, and remember the format
-  // so runtime-created FX instances can be prepared off the audio thread.
+  // so runtime-created FX instances can be prepared off the audio thread. The
+  // audio thread is guaranteed stopped here, so it's also the one safe point to
+  // drop retired entries unconditionally (the block counter isn't advancing, so
+  // epoch-gated reclaim alone would hold them until the next edit-after-audio).
+  // Takes the edit lock: the web thread can be mid-grid-edit when a device
+  // reconnect re-prepares the chain.
   void prepare(double sampleRate, int maxBlock) {
+    std::lock_guard<std::mutex> lk(editMutex_);
     sr_ = sampleRate; maxBlock_ = maxBlock;
+    retired_.clear();
     fadeDryL_.assign((size_t)maxBlock, 0.0f);   // bypass-crossfade scratch
     fadeDryR_.assign((size_t)maxBlock, 0.0f);
     fadeStep_ = float(1.0 / (kFadeMs * 0.001 * sampleRate));
@@ -84,7 +101,8 @@ public:
   // REAL-TIME: run the in-place stereo signal through prefix, the published FX
   // order, then suffix. Effect::run() handles engaged/bypassed per effect --
   // crossfading toggles so footswitches never click, and letting delay/reverb
-  // tails ring out while bypassed.
+  // tails ring out while bypassed. The closing epoch bump (release) publishes
+  // "this block is done with whatever order it read" to the reclaimer.
   void process(float* L, float* R, int n) noexcept {
     float* dl = fadeDryL_.data();
     float* dr = fadeDryR_.data();
@@ -92,42 +110,46 @@ public:
     if (const FxOrder* o = fxOrder_.load(std::memory_order_acquire))
       for (auto* fx : o->slots) fx->run(L, R, n, dl, dr, fadeStep_);
     for (auto* fx : suffix_) fx->run(L, R, n, dl, dr, fadeStep_);
+    epoch_.fetch_add(1, std::memory_order_release);
   }
 
-  // Lookup by type_id (unique within the chain). Used by the web/preset layer.
-  Effect* find(const std::string& typeId) {
+  // Lookup by type_id (unique within the chain). Used by the web/preset/UI
+  // layers; the returned shared_ptr keeps the effect alive across grid edits.
+  std::shared_ptr<Effect> find(const std::string& typeId) {
     std::lock_guard<std::mutex> lk(editMutex_);
     for (auto& fx : effects_)
-      if (fx->type_id() == typeId) return fx.get();
+      if (fx->type_id() == typeId) return fx;
     for (auto& s : fxSlots_)
-      if (s && s->type_id() == typeId) return s.get();
+      if (s && s->type_id() == typeId) return s;
     return nullptr;
   }
 
   // Snapshot of the whole chain in signal order (prefix, active FX, suffix).
   // Used by the web/preset layer; safe on any non-audio thread.
-  std::vector<Effect*> effects() const {
+  std::vector<std::shared_ptr<Effect>> effects() const {
     std::lock_guard<std::mutex> lk(editMutex_);
-    std::vector<Effect*> out;
-    out.reserve(prefix_.size() + kFxSlots + suffix_.size());
-    for (auto* fx : prefix_) out.push_back(fx);
-    for (auto& s : fxSlots_) if (s) out.push_back(s.get());
-    for (auto* fx : suffix_) out.push_back(fx);
+    std::vector<std::shared_ptr<Effect>> out;
+    out.reserve(effects_.size() + kFxSlots);
+    for (const auto& fx : effects_)          // prefix: Input/Hidden, add order
+      if (fx->section != Section::Output) out.push_back(fx);
+    for (const auto& s : fxSlots_) if (s) out.push_back(s);
+    for (const auto& fx : effects_)          // suffix: Output, add order
+      if (fx->section == Section::Output) out.push_back(fx);
     return out;
   }
 
-  // ---- FX grid editing -- UI THREAD ONLY -----------------------------------
+  // ---- FX grid editing -- UI + web threads (serialized by editMutex_) -------
   static constexpr int fxSlotCount() { return kFxSlots; }
 
   bool fxOccupied(int slot) const {
     std::lock_guard<std::mutex> lk(editMutex_);
     return slot >= 0 && slot < kFxSlots && fxSlots_[(size_t)slot] != nullptr;
   }
-  Effect* fxAt(int slot) const {
+  std::shared_ptr<Effect> fxAt(int slot) const {
     std::lock_guard<std::mutex> lk(editMutex_);
-    return (slot >= 0 && slot < kFxSlots) ? fxSlots_[(size_t)slot].get() : nullptr;
+    return (slot >= 0 && slot < kFxSlots) ? fxSlots_[(size_t)slot] : nullptr;
   }
-  int fxSlotOf(Effect* fx) const {
+  int fxSlotOf(const Effect* fx) const {
     std::lock_guard<std::mutex> lk(editMutex_);
     for (int i = 0; i < kFxSlots; i++)
       if (fxSlots_[(size_t)i].get() == fx) return i;
@@ -150,15 +172,21 @@ public:
   // to the audio thread.
   void fxPlace(int slot, std::unique_ptr<Effect> fx) {
     if (slot < 0 || slot >= kFxSlots || !fx) return;
-    fx->prepare(sr_, maxBlock_);
+    double sr; int mb;
+    {  // snapshot the format under the lock (prepare() can rewrite it)
+      std::lock_guard<std::mutex> lk(editMutex_);
+      sr = sr_; mb = maxBlock_;
+    }
+    fx->prepare(sr, mb);   // allocation-heavy: deliberately outside the lock
     fx->snapFade();
     std::lock_guard<std::mutex> lk(editMutex_);
     auto old = std::move(fxSlots_[(size_t)slot]);   // may be null
-    fxSlots_[(size_t)slot] = std::move(fx);
+    fxSlots_[(size_t)slot] = std::shared_ptr<Effect>(std::move(fx));
     commit(std::move(old));
   }
 
-  // Empty a slot (its effect stops processing; freed after the grace period).
+  // Empty a slot (its effect stops processing; freed after the grace period,
+  // or later still if a web/UI thread is holding a reference).
   void fxRemove(int slot) {
     std::lock_guard<std::mutex> lk(editMutex_);
     if (slot < 0 || slot >= kFxSlots || !fxSlots_[(size_t)slot]) return;
@@ -201,7 +229,7 @@ public:
 
     // Pull the occupied slots into signal order, tracking where the dragged
     // effect and the drop target landed within that compacted sequence.
-    std::vector<std::unique_ptr<Effect>> seq;
+    std::vector<std::shared_ptr<Effect>> seq;
     int fromIdx = -1, toIdx = -1;
     for (int i = 0; i < kFxSlots; i++) {
       if (!fxSlots_[(size_t)i]) continue;
@@ -224,41 +252,67 @@ public:
   }
 
 private:
+  // One retired object awaiting reclamation: freeable once the audio thread's
+  // block counter reaches safeEpoch. Either field may be null.
+  struct Retired {
+    uint64_t safeEpoch;
+    std::unique_ptr<const FxOrder> order;
+    std::shared_ptr<Effect> fx;
+  };
+
   // Build a fresh immutable order from the slots and swap it in for the audio
-  // thread. First reclaims everything retired by the PREVIOUS edit (provably
-  // unreferenced by now), then retires this edit's old order plus an optional
-  // removed/replaced effect (now unpublished, freed on the next edit).
-  void commit(std::unique_ptr<Effect> retiredEffect = nullptr) {
-    fxRetiredOrders_.clear();
-    fxRetiredEffects_.clear();
+  // thread. Reclaims whatever the audio thread has provably moved past, then
+  // retires this edit's old order plus an optional removed/replaced effect.
+  //
+  // Grace-period reasoning: the store of the new order happens BEFORE the
+  // retire epoch is stamped. At that point, at most the one audio block
+  // currently in flight can still hold the old pointer; it finishes at epoch
+  // e+1, and every later block re-reads fxOrder_ and gets the new order. We
+  // stamp e+2 (one extra full block, ~1.3 ms of margin) and free only once the
+  // counter actually gets there -- so back-to-back edits (a rig load) can
+  // never free something inside its grace window. If audio is stopped or
+  // bypassed the counter stalls and entries simply wait (bounded by edit
+  // count; prepare() clears them at the next audio-stopped point).
+  void commit(std::shared_ptr<Effect> retiredEffect = nullptr) {
+    const uint64_t now = epoch_.load(std::memory_order_acquire);
+    retired_.erase(std::remove_if(retired_.begin(), retired_.end(),
+                                  [now](const Retired& r) {
+                                    return now >= r.safeEpoch;
+                                  }),
+                   retired_.end());
 
     auto next = std::make_unique<FxOrder>();
     for (auto& s : fxSlots_) if (s) next->slots.push_back(s.get());
 
-    if (fxLive_) fxRetiredOrders_.push_back(std::move(fxLive_));
+    fxOrder_.store(next.get(), std::memory_order_release);
+    // StoreLoad fence: the epoch MUST be sampled at-or-after the publish above
+    // is visible. Without it the load could be hoisted before the store, and a
+    // stamp taken blocks earlier would already be expired at retire time.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    const uint64_t e = epoch_.load(std::memory_order_relaxed);
+    if (fxLive_) retired_.push_back({e + 2, std::move(fxLive_), nullptr});
     fxLive_ = std::move(next);
-    fxOrder_.store(fxLive_.get(), std::memory_order_release);
-
-    if (retiredEffect) fxRetiredEffects_.push_back(std::move(retiredEffect));
+    if (retiredEffect)
+      retired_.push_back({e + 2, nullptr, std::move(retiredEffect)});
   }
 
-  std::vector<std::unique_ptr<Effect>> effects_;        // owns prefix/suffix singletons
-  std::vector<Effect*> prefix_, suffix_;                // fixed regions (raw views)
-  std::array<std::unique_ptr<Effect>, kFxSlots> fxSlots_{};  // owns FX instances
+  std::vector<std::shared_ptr<Effect>> effects_;    // owns prefix/suffix singletons
+  std::vector<Effect*> prefix_, suffix_;            // fixed regions (raw views)
+  std::array<std::shared_ptr<Effect>, kFxSlots> fxSlots_{};  // owns FX instances
 
-  double sr_ = 0; int maxBlock_ = 0;                    // format for runtime prepare()
+  double sr_ = 0; int maxBlock_ = 0;                // format for runtime prepare()
 
   // Bypass-crossfade support (see Effect::run). The scratch buffers hold each
   // effect's dry input during a fade; safe to share across effects because the
   // chain is strictly serial. Audio thread only.
-  static constexpr double kFadeMs = 10.0;               // toggle crossfade length
+  static constexpr double kFadeMs = 10.0;           // toggle crossfade length
   std::vector<float> fadeDryL_, fadeDryR_;
-  float fadeStep_ = 1.0f;                               // fade progress per sample
+  float fadeStep_ = 1.0f;                           // fade progress per sample
 
-  std::atomic<const FxOrder*> fxOrder_{nullptr};        // published to audio thread
-  std::unique_ptr<const FxOrder> fxLive_;               // currently published (owned)
-  std::vector<std::unique_ptr<const FxOrder>> fxRetiredOrders_;   // awaiting reclaim
-  std::vector<std::unique_ptr<Effect>> fxRetiredEffects_;         // awaiting reclaim
+  std::atomic<const FxOrder*> fxOrder_{nullptr};    // published to audio thread
+  std::atomic<uint64_t> epoch_{0};                  // blocks completed (audio thread)
+  std::unique_ptr<const FxOrder> fxLive_;           // currently published (owned)
+  std::vector<Retired> retired_;                    // awaiting their safeEpoch
 
   // Serializes grid edits + structural reads across the UI and web threads (now
   // that both can mutate the grid). The AUDIO thread never touches this -- it

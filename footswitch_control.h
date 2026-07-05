@@ -22,7 +22,7 @@
 inline void applyFootswitch(Chain& chain, PedalControls& ctl, int fs) {
   if (fs < 0 || fs > 3) return;
   const bool engaged = ctl.fsEngaged[fs].load();
-  for (auto* e : chain.effects())
+  for (const auto& e : chain.effects())
     if (e->fsAssign.load() == fs)
       e->enabled.store(engaged ^ (e->fsMode.load() == 1));
 }
