@@ -48,16 +48,18 @@ Delay/reverb tails currently die when a rig load replaces grid instances.
 
 ## Portfolio scaffolding (highest ROI for job applications)
 
-### Tests -- currently zero for the C++ app
-The code is unusually testable: effects are pure `prepare/process` objects.
-- Offline DSP tests: bypass null test, tail decay, no-NaN/no-inf sweeps across
-  every param at min/mid/max, silence-in/silence-out.
+### Tests
+Catch2 v3 + ctest are wired in (tests/, BUILD_TESTING default ON; run `ctest`
+in the build dir). FX registration was extracted to fx_registry.cpp so the
+suite sweeps every registered kind automatically. DONE: offline DSP invariants
+(bypass null test, tail decay, no-NaN/no-inf sweeps across every param at
+min/mid/max, silence-in/silence-out), param clamping/metadata, factory
+id-uniqueness + createRestored counter tests. Still to do:
 - Rig/preset round-trip serialization tests.
-- Param clamping, factory id-uniqueness, fxReorder/fxMoveTo edge cases.
+- fxReorder/fxMoveTo edge cases.
 - A threaded chain-edit stress test (audio-thread simulator + hammering grid
   edits) run under TSan/ASan -- this is the test that would have caught the
-  reclamation bug.
-- Catch2 (or GoogleTest) + ctest wired into the existing CMake.
+  reclamation bug. Needs -DSANITIZE=thread|address build configs.
 
 ### CI -- no .github/ exists
 GitHub Actions matrix:

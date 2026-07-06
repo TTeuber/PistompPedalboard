@@ -18,6 +18,7 @@ endif()
 juce_add_console_app(pedalboard PRODUCT_NAME "pedalboard")
 target_sources(pedalboard PRIVATE
   pedalboard.cpp
+  fx_registry.cpp
   ui/ui_controller.cpp
   web_server.cpp
   rigs.cpp
