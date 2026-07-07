@@ -24,12 +24,22 @@ include(Catch)
 juce_add_console_app(pedalboard_tests PRODUCT_NAME "pedalboard_tests")
 target_sources(pedalboard_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../fx_registry.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../rigs.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../presets.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../meta.cpp
   test_registry.cpp
   test_dsp_invariants.cpp
+  test_chain_grid.cpp
+  test_rig_roundtrip.cpp
 )
 target_compile_definitions(pedalboard_tests PRIVATE
   JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_STANDALONE_APPLICATION=1)
+# <json.hpp> comes from NAM's vendored nlohmann (same header the app uses via
+# nam_core's PUBLIC includes); take just the include dir rather than linking
+# the whole NAM object library into the tests.
 target_include_directories(pedalboard_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_include_directories(pedalboard_tests SYSTEM PRIVATE
+  ${namcore_SOURCE_DIR}/Dependencies/nlohmann)
 target_link_libraries(pedalboard_tests PRIVATE
   Catch2::Catch2WithMain
   juce::juce_core
