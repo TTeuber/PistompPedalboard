@@ -1,0 +1,39 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The Catch2 suite is hardware-free (no ALSA/GPIO at runtime), so it builds
+  # and runs on a plain ubuntu runner. The matrix re-runs it under TSan (the
+  # RCU chain-edit stress test's happens-before edges) and ASan (use-after-free
+  # past the epoch grace period) -- each sanitizer needs its own build dir,
+  # which a fresh CI job gives us for free.
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: ["", "thread", "address"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        # libasound2-dev/libgpiod-dev satisfy the HAL's Linux backend at
+        # configure time; the X11/freetype dev libs are needed to compile
+        # juceaide (JUCE's build-time asset tool), not by the pedal itself.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build pkg-config libasound2-dev libgpiod-dev \
+            libfreetype6-dev libfontconfig1-dev libx11-dev libxext-dev libxrandr-dev \
+            libxinerama-dev libxcursor-dev
+      - name: Configure
+        run: >
+          cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          ${{ matrix.sanitizer != '' && format('-DSANITIZE={0}', matrix.sanitizer) || '' }}
+      - name: Build tests
+        run: cmake --build build --target pedalboard_tests
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure

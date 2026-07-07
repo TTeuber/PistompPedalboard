@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Configure (once) and build inside the persistent dev container.
 #
-#   scripts/build.sh                 # build everything
-#   scripts/build.sh rt_passthrough  # build one target
-#   scripts/build.sh pistomp_app
+#   scripts/build.sh             # build everything
+#   scripts/build.sh pedalboard  # build one target
 #
 # Build artifacts land in ./build on the Mac (bind mount); ccache lives on a
 # named volume. Both persist, so rebuilds are incremental and clean rebuilds

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Copy a built binary to the Pi over SSH (and optionally run it).
 #
-#   scripts/deploy.sh rt_passthrough            # rsync to the Pi
-#   scripts/deploy.sh rt_passthrough --run      # rsync, then run it over SSH
-#   scripts/deploy.sh pistomp_app --run
+#   scripts/deploy.sh pedalboard            # rsync to the Pi
+#   scripts/deploy.sh pedalboard --run      # rsync, then run it over SSH
 #
 # Pi connection (override via env if your setup differs):
 #   PI_HOST=pistomp.local  PI_USER=patch  PI_DIR=~/app
@@ -20,7 +19,7 @@ PI_USER="${PI_USER:-pistomp}"
 PI_DIR="${PI_DIR:-~/app}"
 
 # Find the built binary anywhere under build/ (JUCE nests its output under
-# *_artefacts/, the sandbox targets sit in build/sandbox/).
+# *_artefacts/).
 BIN="$(find build -type f -name "$TARGET" -perm +111 2>/dev/null | head -1 || true)"
 if [[ -z "$BIN" ]]; then
   echo "error: no executable named '$TARGET' under build/. Build it first:" >&2
@@ -36,15 +35,8 @@ rsync -avz "$BIN" "$PI_USER@$PI_HOST:$PI_DIR/"
 # (it resolves them via /proc/self/exe). Ship them alongside the executable.
 if [[ "$TARGET" == "pedalboard" ]]; then
   echo ">> deploying web/ + presets/ assets"
-  rsync -avz pedalboard/web "$PI_USER@$PI_HOST:$PI_DIR/"
-  rsync -avz pedalboard/presets "$PI_USER@$PI_HOST:$PI_DIR/"
-fi
-
-# The launcher reads its program list from programs.json next to the binary
-# (also via /proc/self/exe). Ship it so the boot menu has something to show.
-if [[ "$TARGET" == "launcher" ]]; then
-  echo ">> deploying programs.json"
-  rsync -avz launcher/programs.json "$PI_USER@$PI_HOST:$PI_DIR/"
+  rsync -avz web "$PI_USER@$PI_HOST:$PI_DIR/"
+  rsync -avz presets "$PI_USER@$PI_HOST:$PI_DIR/"
 fi
 
 if [[ "${1:-}" == "--run" ]]; then

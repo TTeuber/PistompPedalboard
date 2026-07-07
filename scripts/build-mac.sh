@@ -11,7 +11,7 @@
 # Prereqs (one time):   brew install cmake ninja sdl2
 # Build:                scripts/build-mac.sh            # everything
 #                       scripts/build-mac.sh pedalboard # one target
-# Run:                  ./build-mac/pedalboard/pedalboard_artefacts/pedalboard <model.nam>
+# Run:                  ./build-mac/pedalboard_artefacts/pedalboard <model.nam>
 #
 # Keyboard controls in the sim window:
 #   Nav encoder  Left / Right        Nav select (hold = quit)  Return

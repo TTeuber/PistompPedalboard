@@ -1,0 +1,38 @@
+# --- Build output -----------------------------------------------------------
+# Out-of-source CMake build dirs: cache + artifacts AND the FetchContent
+# downloads (JUCE/LVGL/NAM, hundreds of MB). build/ is the Pi (Docker) build,
+# build-mac* are the native simulator + sanitizer builds.
+/build*/
+CMakeUserPresets.json
+
+# --- web UI -------------------------------------------------------------------
+# web/ is GENERATED: Vite builds the Svelte app in webui/ into it during the
+# CMake build (target pedalboard_webui). deploy.sh rsyncs the built dir to the
+# Pi. Source lives in webui/; the output + node_modules don't belong in git.
+# (package-lock.json IS committed so `npm ci` is reproducible.)
+/web/
+/webui/node_modules/
+/webui/.vite/
+
+# Derived library index: regenerated next to the binary at every startup
+# (manifest::rebuild), with a volatile generatedAt -- never a source artefact.
+/manifest.json
+
+# NAM captures are third-party model files -- get your own and drop them here
+# (the app loads NAM_Models/Amp.nam relative to its working dir by default).
+/NAM_Models/
+
+# --- Editor / tooling ---------------------------------------------------------
+.vscode/
+.idea/
+.cache/
+compile_commands.json
+*.swp
+*.swo
+*~
+.claude
+
+# --- OS junk --------------------------------------------------------------------
+.DS_Store
+._*
+Thumbs.db

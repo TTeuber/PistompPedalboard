@@ -25,8 +25,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # JUCE writes the macOS binary (+ its web/ rigs/ presets/ setlists/) under Release/.
-SIM=build-mac/pedalboard/pedalboard_artefacts/Release/pedalboard
-[[ -x "$SIM" ]] || SIM=build-mac/pedalboard/pedalboard_artefacts/pedalboard
+SIM=build-mac/pedalboard_artefacts/Release/pedalboard
+[[ -x "$SIM" ]] || SIM=build-mac/pedalboard_artefacts/pedalboard
 
 SIM_PID=""
 cleanup() { [[ -n "$SIM_PID" ]] && kill "$SIM_PID" 2>/dev/null || true; }
@@ -46,6 +46,6 @@ fi
 
 echo "→ Starting Vite dev server on :5173 (proxying /api -> :8080)…"
 echo "  Open http://localhost:5173  ·  Ctrl-C here stops everything."
-cd pedalboard/webui
+cd webui
 [[ -d node_modules ]] || npm install
 npm run dev
