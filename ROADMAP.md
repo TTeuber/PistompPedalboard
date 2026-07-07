@@ -48,18 +48,20 @@ Delay/reverb tails currently die when a rig load replaces grid instances.
 
 ## Portfolio scaffolding (highest ROI for job applications)
 
-### Tests
-Catch2 v3 + ctest are wired in (tests/, BUILD_TESTING default ON; run `ctest`
-in the build dir). FX registration was extracted to fx_registry.cpp so the
-suite sweeps every registered kind automatically. DONE: offline DSP invariants
-(bypass null test, tail decay, no-NaN/no-inf sweeps across every param at
-min/mid/max, silence-in/silence-out), param clamping/metadata, factory
-id-uniqueness + createRestored counter tests. Still to do:
-- Rig/preset round-trip serialization tests.
-- fxReorder/fxMoveTo edge cases.
-- A threaded chain-edit stress test (audio-thread simulator + hammering grid
-  edits) run under TSan/ASan -- this is the test that would have caught the
-  reclamation bug. Needs -DSANITIZE=thread|address build configs.
+### Tests -- DONE
+Catch2 v3 + ctest (tests/, BUILD_TESTING default ON); `scripts/test-mac.sh
+[tsan|asan]` builds + runs the suite plain or sanitized (-DSANITIZE=
+thread|address, separate build dirs). FX registration was extracted to
+fx_registry.cpp so the suite sweeps every registered kind automatically.
+Covered: offline DSP invariants (bypass null test, tail decay, no-NaN/no-inf
+sweeps across every param at min/mid/max, silence-in/silence-out), param
+clamping/metadata, factory id-uniqueness + createRestored counters,
+fxReorder/fxMoveTo/fxMove/fxPlace edge cases, rig/preset round-trips (memory +
+disk, identity across re-save/rename, hostile-name rejection), and the
+threaded chain-edit stress test (audio-thread simulator vs. two editors
+hammering grid edits + rig-load bursts) -- clean under both TSan and ASan.
+Remaining test work belongs to the CI item below (run the three configs in
+Actions).
 
 ### CI -- no .github/ exists
 GitHub Actions matrix:

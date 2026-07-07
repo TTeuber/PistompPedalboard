@@ -31,6 +31,7 @@ target_sources(pedalboard_tests PRIVATE
   test_dsp_invariants.cpp
   test_chain_grid.cpp
   test_rig_roundtrip.cpp
+  test_chain_stress.cpp
 )
 target_compile_definitions(pedalboard_tests PRIVATE
   JUCE_USE_CURL=0 JUCE_WEB_BROWSER=0 JUCE_STANDALONE_APPLICATION=1)
