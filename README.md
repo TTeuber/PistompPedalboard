@@ -85,4 +85,4 @@ cmake -B build-mac -DFETCHCONTENT_SOURCE_DIR_PISTOMP_HAL=/path/to/pistomp-hal
 
 ## License
 
-MIT — see [LICENSE](LICENSE). NAM model captures and JUCE/LVGL/NAM sources fetched at build time carry their own licenses.
+GNU AGPL-3.0 — see [LICENSE](LICENSE). The app links [JUCE 8](https://juce.com/legal/juce-8-licence/), which is dual-licensed AGPLv3/commercial, so the combined work is distributed under the AGPL. The other dependencies ([pistomp-hal](https://github.com/TTeuber/pistomp-hal), LVGL, NeuralAmpModelerCore, cpp-httplib) are MIT. NAM model captures are not distributed with this repo and carry their creators' own terms.
